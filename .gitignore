@@ -73,3 +73,5 @@ thumbnails/
 # Coding agent artifacts
 plans/
 prompts/
+research/
+.claude/history/

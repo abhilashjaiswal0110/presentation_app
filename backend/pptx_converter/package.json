@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "type": "module",
   "dependencies": {
-    "pptxgenjs": "^3.12.0"
+    "pptxgenjs": "^3.12.0",
+    "puppeteer": "^23.0.0"
   }
 }

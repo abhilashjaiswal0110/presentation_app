@@ -75,11 +75,11 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Configure CORS
+# Configure CORS - allow all origins for development
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,  # Must be False when using allow_origins=["*"]
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -229,6 +229,79 @@ async def export_pptx(session_id: str):
         return Response(
             content=pptx_bytes,
             media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"'
+            }
+        )
+    finally:
+        # Cleanup temp files
+        if os.path.exists(input_path):
+            os.unlink(input_path)
+        if os.path.exists(output_path):
+            os.unlink(output_path)
+
+
+@app.get("/session/{session_id}/export/pdf")
+async def export_pdf(session_id: str):
+    """Export presentation as PDF file (pixel-perfect rendering)."""
+    import subprocess
+    import tempfile
+    from session import session_manager
+
+    session = session_manager.load_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    if not session.presentation or not session.presentation.slides:
+        raise HTTPException(status_code=400, detail="No slides to export")
+
+    # Prepare input for Node.js PDF converter
+    input_data = {
+        "title": session.presentation.title,
+        "slides": [
+            {
+                "html": slide.html,
+                "width": 960,
+                "height": 540
+            }
+            for slide in session.presentation.slides
+        ],
+        "theme": session.presentation.theme
+    }
+
+    # Create temp files
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+        json.dump(input_data, f)
+        input_path = f.name
+
+    output_path = tempfile.mktemp(suffix='.pdf')
+
+    try:
+        # Run Node.js PDF converter
+        converter_dir = os.path.join(os.path.dirname(__file__), 'pptx_converter')
+        result = subprocess.run(
+            ['node', 'convert-pdf.js', input_path, output_path],
+            cwd=converter_dir,
+            capture_output=True,
+            text=True,
+            timeout=60  # PDF generation can take longer
+        )
+
+        if result.returncode != 0:
+            logger.error(f"PDF conversion failed: {result.stderr}")
+            raise HTTPException(status_code=500, detail=f"PDF conversion failed: {result.stderr}")
+
+        # Read output file
+        with open(output_path, 'rb') as f:
+            pdf_bytes = f.read()
+
+        # Generate filename
+        filename = f"{session.presentation.title or 'presentation'}.pdf"
+        filename = "".join(c for c in filename if c.isalnum() or c in ' -_.').strip()
+
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
             headers={
                 "Content-Disposition": f'attachment; filename="{filename}"'
             }

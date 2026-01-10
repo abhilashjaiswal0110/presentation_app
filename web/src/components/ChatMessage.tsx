@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import type { ChatMessage as ChatMessageType } from "@/types";
 import { AgentActivityLog } from "./AgentActivityLog";
 
@@ -9,57 +8,74 @@ interface ChatMessageProps {
 }
 
 export function ChatMessage({ message }: ChatMessageProps) {
-  const [isLogExpanded, setIsLogExpanded] = useState(false);
-
   const isUser = message.role === "user";
   const isAssistant = message.role === "assistant";
+  const isStreaming = message.status === "streaming";
+  const hasContent = message.content && message.content.trim().length > 0;
 
   return (
     <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
       <div
-        className={`max-w-[85%] rounded-lg p-3 ${
+        className={`max-w-[85%] rounded-lg ${
           isUser
-            ? "bg-blue-600 text-white"
+            ? "bg-blue-600 text-white p-3"
             : isAssistant
-            ? "bg-gray-100 text-gray-900"
-            : "bg-yellow-50 text-yellow-800 border border-yellow-200"
+            ? "bg-white border border-gray-200 shadow-sm"
+            : "bg-yellow-50 text-yellow-800 border border-yellow-200 p-3"
         }`}
       >
-        {/* Status indicator for streaming */}
-        {message.status === "streaming" && (
-          <div className="flex items-center gap-2 mb-2 text-sm opacity-75">
-            <div className="w-2 h-2 bg-current rounded-full animate-pulse" />
-            <span>Thinking...</span>
-          </div>
+        {isUser ? (
+          <>
+            {/* User message content */}
+            <div className="whitespace-pre-wrap break-words">{message.content}</div>
+            {/* Timestamp */}
+            <div className="text-xs mt-2 text-blue-200">
+              {message.timestamp.toLocaleTimeString()}
+            </div>
+          </>
+        ) : isAssistant ? (
+          <>
+            {/* Agent activity log - shows at top for assistant messages */}
+            {message.agentLog && message.agentLog.length > 0 && (
+              <div className="p-3 pb-0">
+                <AgentActivityLog
+                  log={message.agentLog}
+                  isStreaming={isStreaming}
+                  summary={hasContent ? undefined : "Processing your request..."}
+                />
+              </div>
+            )}
+
+            {/* Content section - only show if there's content */}
+            {hasContent && (
+              <div className="p-3 pt-2">
+                <div className="whitespace-pre-wrap break-words text-gray-900">
+                  {message.content}
+                </div>
+              </div>
+            )}
+
+            {/* Error status */}
+            {message.status === "error" && (
+              <div className="px-3 pb-3 text-red-600 text-sm">
+                An error occurred while processing this message.
+              </div>
+            )}
+
+            {/* Timestamp */}
+            <div className="px-3 pb-3 text-xs text-gray-400">
+              {message.timestamp.toLocaleTimeString()}
+            </div>
+          </>
+        ) : (
+          <>
+            {/* System message */}
+            <div className="whitespace-pre-wrap break-words">{message.content}</div>
+            <div className="text-xs mt-2 text-gray-400">
+              {message.timestamp.toLocaleTimeString()}
+            </div>
+          </>
         )}
-
-        {/* Message content */}
-        <div className="whitespace-pre-wrap break-words">{message.content}</div>
-
-        {/* Error status */}
-        {message.status === "error" && (
-          <div className="mt-2 text-red-600 text-sm">
-            An error occurred while processing this message.
-          </div>
-        )}
-
-        {/* Agent activity log */}
-        {isAssistant && message.agentLog && message.agentLog.length > 0 && (
-          <AgentActivityLog
-            log={message.agentLog}
-            isExpanded={isLogExpanded}
-            onToggle={() => setIsLogExpanded(!isLogExpanded)}
-          />
-        )}
-
-        {/* Timestamp */}
-        <div
-          className={`text-xs mt-2 ${
-            isUser ? "text-blue-200" : "text-gray-400"
-          }`}
-        >
-          {message.timestamp.toLocaleTimeString()}
-        </div>
       </div>
     </div>
   );

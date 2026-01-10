@@ -2,20 +2,10 @@
  * PPTX Converter - Converts HTML slides to PowerPoint format
  *
  * Usage: node convert.js <input.json> <output.pptx>
- *
- * Input JSON format:
- * {
- *   "title": "Presentation Title",
- *   "slides": [
- *     { "html": "<div>...</div>", "width": 960, "height": 540 }
- *   ],
- *   "theme": { "primaryColor": "#1a73e8", "fontFamily": "Arial" }
- * }
  */
 
 import pptxgen from 'pptxgenjs';
 import fs from 'fs';
-import path from 'path';
 
 // Parse command line arguments
 const args = process.argv.slice(2);
@@ -39,105 +29,153 @@ try {
 
 // Create presentation
 const pptx = new pptxgen();
-
-// Set presentation properties
 pptx.title = inputData.title || 'Untitled Presentation';
 pptx.author = 'AI Presentation Generator';
-pptx.subject = inputData.title || '';
 
-// Set slide dimensions (default 16:9)
+// Set slide dimensions (16:9)
 pptx.defineLayout({ name: 'CUSTOM', width: 10, height: 5.625 });
 pptx.layout = 'CUSTOM';
 
 // Theme settings
 const theme = inputData.theme || {};
-const primaryColor = theme.primaryColor || '1a73e8';
+const defaultPrimaryColor = normalizeColor(theme.primaryColor) || '1a73e8';
 const fontFamily = theme.fontFamily || 'Arial';
 
 /**
- * Parse HTML and extract text content with basic styling
+ * Normalize color to 6-char hex without #
  */
-function parseHtmlContent(html) {
+function normalizeColor(color) {
+  if (!color) return null;
+  color = color.replace('#', '').trim();
+  if (color.length === 3) {
+    color = color[0] + color[0] + color[1] + color[1] + color[2] + color[2];
+  }
+  return color.toUpperCase();
+}
+
+/**
+ * Convert RGB to hex
+ */
+function rgbToHex(r, g, b) {
+  return ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1).toUpperCase();
+}
+
+/**
+ * Parse color from CSS value (hex, rgb, rgba)
+ */
+function parseColor(colorStr) {
+  if (!colorStr) return null;
+
+  // Hex color
+  const hexMatch = colorStr.match(/#([0-9a-fA-F]{3,6})/);
+  if (hexMatch) {
+    return normalizeColor(hexMatch[1]);
+  }
+
+  // RGB/RGBA
+  const rgbMatch = colorStr.match(/rgba?\s*\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
+  if (rgbMatch) {
+    return rgbToHex(parseInt(rgbMatch[1]), parseInt(rgbMatch[2]), parseInt(rgbMatch[3]));
+  }
+
+  // Named colors
+  const namedColors = {
+    white: 'FFFFFF', black: '000000', red: 'FF0000', green: '008000',
+    blue: '0000FF', yellow: 'FFFF00', gray: '808080', grey: '808080'
+  };
+  const lower = colorStr.toLowerCase().trim();
+  if (namedColors[lower]) return namedColors[lower];
+
+  return null;
+}
+
+/**
+ * Check if color is light
+ */
+function isLightColor(hex) {
+  if (!hex) return true;
+  hex = hex.replace('#', '');
+  const r = parseInt(hex.substr(0, 2), 16);
+  const g = parseInt(hex.substr(2, 2), 16);
+  const b = parseInt(hex.substr(4, 2), 16);
+  return (r * 299 + g * 587 + b * 114) / 1000 > 128;
+}
+
+/**
+ * Extract styles from style attribute string
+ */
+function parseStyleAttr(styleStr) {
+  const styles = {};
+  if (!styleStr) return styles;
+
+  const declarations = styleStr.split(';');
+  for (const decl of declarations) {
+    const colonIdx = decl.indexOf(':');
+    if (colonIdx > 0) {
+      const prop = decl.slice(0, colonIdx).trim().toLowerCase();
+      const value = decl.slice(colonIdx + 1).trim();
+      styles[prop] = value;
+    }
+  }
+  return styles;
+}
+
+/**
+ * Extract background from root div
+ */
+function extractBackground(html) {
+  const divMatch = html.match(/<div[^>]*style="([^"]*)"/i);
+  if (!divMatch) return null;
+
+  const styles = parseStyleAttr(divMatch[1]);
+  const bgValue = styles['background'] || styles['background-color'];
+  if (!bgValue) return null;
+
+  // Check for gradient
+  const gradientMatch = bgValue.match(/linear-gradient\s*\([^)]+\)/i);
+  if (gradientMatch) {
+    // Extract all colors from gradient
+    const colors = [];
+    const hexMatches = bgValue.matchAll(/#([0-9a-fA-F]{3,6})/g);
+    for (const m of hexMatches) colors.push(normalizeColor(m[1]));
+
+    const rgbMatches = bgValue.matchAll(/rgba?\s*\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/g);
+    for (const m of rgbMatches) colors.push(rgbToHex(parseInt(m[1]), parseInt(m[2]), parseInt(m[3])));
+
+    if (colors.length > 0) {
+      return { type: 'gradient', colors };
+    }
+  }
+
+  // Solid color
+  const color = parseColor(bgValue);
+  if (color) {
+    return { type: 'solid', color };
+  }
+
+  return null;
+}
+
+/**
+ * Parse an HTML element and extract text with styling
+ */
+function parseElement(html, tagName) {
+  const regex = new RegExp(`<${tagName}[^>]*(?:style="([^"]*)")?[^>]*>([\\s\\S]*?)<\\/${tagName}>`, 'gi');
   const elements = [];
 
-  // Simple regex-based HTML parsing for common elements
-  // This handles: h1, h2, h3, p, ul/li, strong, em
+  let match;
+  while ((match = regex.exec(html)) !== null) {
+    const fullTag = match[0];
+    const content = match[2];
 
-  // Extract title (h1)
-  const h1Match = html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i);
-  if (h1Match) {
+    // Extract style from the full tag (regex group might miss it)
+    const styleMatch = fullTag.match(/style="([^"]*)"/i);
+    const styles = styleMatch ? parseStyleAttr(styleMatch[1]) : {};
+
     elements.push({
-      type: 'title',
-      text: stripHtml(h1Match[1]),
-      fontSize: 44,
-      bold: true
+      text: stripHtml(content),
+      styles
     });
-  }
-
-  // Extract subtitles (h2)
-  const h2Matches = html.matchAll(/<h2[^>]*>([\s\S]*?)<\/h2>/gi);
-  for (const match of h2Matches) {
-    elements.push({
-      type: 'subtitle',
-      text: stripHtml(match[1]),
-      fontSize: 32,
-      bold: true
-    });
-  }
-
-  // Extract h3
-  const h3Matches = html.matchAll(/<h3[^>]*>([\s\S]*?)<\/h3>/gi);
-  for (const match of h3Matches) {
-    elements.push({
-      type: 'heading',
-      text: stripHtml(match[1]),
-      fontSize: 24,
-      bold: true
-    });
-  }
-
-  // Extract paragraphs
-  const pMatches = html.matchAll(/<p[^>]*>([\s\S]*?)<\/p>/gi);
-  for (const match of pMatches) {
-    elements.push({
-      type: 'paragraph',
-      text: stripHtml(match[1]),
-      fontSize: 18
-    });
-  }
-
-  // Extract bullet lists
-  const ulMatches = html.matchAll(/<ul[^>]*>([\s\S]*?)<\/ul>/gi);
-  for (const match of ulMatches) {
-    const liMatches = match[1].matchAll(/<li[^>]*>([\s\S]*?)<\/li>/gi);
-    const bullets = [];
-    for (const li of liMatches) {
-      bullets.push(stripHtml(li[1]));
-    }
-    if (bullets.length > 0) {
-      elements.push({
-        type: 'bullets',
-        items: bullets,
-        fontSize: 18
-      });
-    }
-  }
-
-  // Extract ordered lists
-  const olMatches = html.matchAll(/<ol[^>]*>([\s\S]*?)<\/ol>/gi);
-  for (const match of olMatches) {
-    const liMatches = match[1].matchAll(/<li[^>]*>([\s\S]*?)<\/li>/gi);
-    const items = [];
-    for (const li of liMatches) {
-      items.push(stripHtml(li[1]));
-    }
-    if (items.length > 0) {
-      elements.push({
-        type: 'numbered',
-        items: items,
-        fontSize: 18
-      });
-    }
   }
 
   return elements;
@@ -159,142 +197,146 @@ function stripHtml(html) {
 }
 
 /**
- * Extract inline styles from HTML element
+ * Detect if slide has centered layout (flexbox centering)
  */
-function extractStyles(styleAttr) {
-  const styles = {};
-  if (!styleAttr) return styles;
+function hasCenteredLayout(html) {
+  const styleMatch = html.match(/<div[^>]*style="([^"]*)"/i);
+  if (!styleMatch) return false;
 
-  const styleString = styleAttr.match(/style="([^"]*)"/i);
-  if (!styleString) return styles;
-
-  const declarations = styleString[1].split(';');
-  for (const decl of declarations) {
-    const [prop, value] = decl.split(':').map(s => s.trim());
-    if (prop && value) {
-      styles[prop] = value;
-    }
-  }
-  return styles;
+  const styles = parseStyleAttr(styleMatch[1]);
+  return (
+    styles['display'] === 'flex' ||
+    styles['justify-content'] === 'center' ||
+    styles['align-items'] === 'center' ||
+    styles['text-align'] === 'center'
+  );
 }
 
 /**
- * Convert color to pptxgenjs format (without #)
+ * Get text alignment from styles
  */
-function normalizeColor(color) {
-  if (!color) return null;
-  return color.replace('#', '');
+function getAlignment(styles) {
+  const align = styles['text-align'];
+  if (align === 'center') return 'center';
+  if (align === 'right') return 'right';
+  return 'left';
 }
 
 // Process each slide
 for (const slideData of inputData.slides || []) {
   const slide = pptx.addSlide();
+  const html = slideData.html || '';
 
-  // Parse HTML content
-  const elements = parseHtmlContent(slideData.html || '');
+  // Extract and apply background
+  const bg = extractBackground(html);
+  let isDarkBg = false;
 
-  let yPosition = 0.5; // Start position in inches
+  if (bg) {
+    if (bg.type === 'gradient' && bg.colors.length >= 2) {
+      // Use first color for solid approximation
+      slide.background = { color: bg.colors[0] };
+      isDarkBg = !isLightColor(bg.colors[0]);
+    } else if (bg.type === 'solid') {
+      slide.background = { color: bg.color };
+      isDarkBg = !isLightColor(bg.color);
+    }
+  }
 
-  for (const element of elements) {
-    switch (element.type) {
-      case 'title':
-        slide.addText(element.text, {
-          x: 0.5,
-          y: yPosition,
-          w: 9,
-          h: 1,
-          fontSize: element.fontSize,
-          fontFace: fontFamily,
-          bold: true,
-          color: normalizeColor(primaryColor),
-          align: 'center'
-        });
-        yPosition += 1.2;
-        break;
+  // Detect layout
+  const isCentered = hasCenteredLayout(html);
 
-      case 'subtitle':
-        slide.addText(element.text, {
-          x: 0.5,
-          y: yPosition,
-          w: 9,
-          h: 0.8,
-          fontSize: element.fontSize,
-          fontFace: fontFamily,
-          bold: true,
-          color: '333333'
-        });
-        yPosition += 0.9;
-        break;
+  // Parse elements
+  const h1s = parseElement(html, 'h1');
+  const h2s = parseElement(html, 'h2');
+  const ps = parseElement(html, 'p');
+  const uls = html.matchAll(/<ul[^>]*>([\s\S]*?)<\/ul>/gi);
 
-      case 'heading':
-        slide.addText(element.text, {
-          x: 0.5,
-          y: yPosition,
-          w: 9,
-          h: 0.6,
-          fontSize: element.fontSize,
-          fontFace: fontFamily,
-          bold: true,
-          color: '444444'
-        });
-        yPosition += 0.7;
-        break;
+  // Determine default text color based on background
+  const defaultTextColor = isDarkBg ? 'FFFFFF' : '333333';
+  const defaultTitleColor = isDarkBg ? 'FFFFFF' : defaultPrimaryColor;
 
-      case 'paragraph':
-        slide.addText(element.text, {
-          x: 0.5,
-          y: yPosition,
-          w: 9,
-          h: 0.5,
-          fontSize: element.fontSize,
-          fontFace: fontFamily,
-          color: '555555'
-        });
-        yPosition += 0.6;
-        break;
+  // Calculate vertical positioning
+  let totalElements = h1s.length + h2s.length + ps.length;
+  let elementHeight = 0.8;
+  let startY = isCentered ? Math.max(0.5, (5.625 - totalElements * elementHeight) / 2) : 0.5;
+  let yPos = startY;
 
-      case 'bullets':
-        const bulletItems = element.items.map(item => ({
-          text: item,
-          options: { bullet: true, indentLevel: 0 }
-        }));
-        slide.addText(bulletItems, {
-          x: 0.5,
-          y: yPosition,
-          w: 9,
-          h: element.items.length * 0.4,
-          fontSize: element.fontSize,
-          fontFace: fontFamily,
-          color: '555555'
-        });
-        yPosition += element.items.length * 0.4 + 0.2;
-        break;
+  // Add H1 (title)
+  for (const el of h1s) {
+    const color = parseColor(el.styles['color']) || defaultTitleColor;
+    const align = isCentered ? 'center' : getAlignment(el.styles);
 
-      case 'numbered':
-        const numberedItems = element.items.map((item, idx) => ({
-          text: `${idx + 1}. ${item}`,
-          options: { indentLevel: 0 }
-        }));
-        slide.addText(numberedItems, {
-          x: 0.5,
-          y: yPosition,
-          w: 9,
-          h: element.items.length * 0.4,
-          fontSize: element.fontSize,
-          fontFace: fontFamily,
-          color: '555555'
-        });
-        yPosition += element.items.length * 0.4 + 0.2;
-        break;
+    slide.addText(el.text, {
+      x: 0.5, y: yPos, w: 9, h: 1,
+      fontSize: 44,
+      fontFace: fontFamily,
+      bold: true,
+      color: color,
+      align: align,
+      valign: 'middle'
+    });
+    yPos += 1.2;
+  }
+
+  // Add H2 (subtitle)
+  for (const el of h2s) {
+    const color = parseColor(el.styles['color']) || defaultTitleColor;
+    const align = isCentered ? 'center' : getAlignment(el.styles);
+
+    slide.addText(el.text, {
+      x: 0.5, y: yPos, w: 9, h: 0.8,
+      fontSize: 32,
+      fontFace: fontFamily,
+      bold: true,
+      color: color,
+      align: align,
+      valign: 'middle'
+    });
+    yPos += 1.0;
+  }
+
+  // Add paragraphs
+  for (const el of ps) {
+    const color = parseColor(el.styles['color']) || defaultTextColor;
+    const align = isCentered ? 'center' : getAlignment(el.styles);
+
+    slide.addText(el.text, {
+      x: 0.5, y: yPos, w: 9, h: 0.6,
+      fontSize: 20,
+      fontFace: fontFamily,
+      color: color,
+      align: align,
+      valign: 'middle'
+    });
+    yPos += 0.7;
+  }
+
+  // Add bullet lists
+  for (const ulMatch of html.matchAll(/<ul[^>]*>([\s\S]*?)<\/ul>/gi)) {
+    const liMatches = ulMatch[1].matchAll(/<li[^>]*>([\s\S]*?)<\/li>/gi);
+    const items = [];
+    for (const li of liMatches) {
+      items.push({ text: stripHtml(li[1]), options: { bullet: true } });
+    }
+
+    if (items.length > 0) {
+      slide.addText(items, {
+        x: 0.5, y: yPos, w: 9, h: items.length * 0.45,
+        fontSize: 18,
+        fontFace: fontFamily,
+        color: defaultTextColor,
+        valign: 'top'
+      });
+      yPos += items.length * 0.45 + 0.3;
     }
   }
 }
 
-// Save presentation
+// Save
 try {
   await pptx.writeFile({ fileName: outputPath });
-  console.log(`Successfully created: ${outputPath}`);
+  console.log(`Created: ${outputPath}`);
 } catch (error) {
-  console.error(`Error saving presentation: ${error.message}`);
+  console.error(`Error: ${error.message}`);
   process.exit(1);
 }

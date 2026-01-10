@@ -98,6 +98,17 @@ export async function exportPptx(sessionId: string): Promise<Blob> {
 }
 
 /**
+ * Export presentation as PDF (pixel-perfect rendering).
+ */
+export async function exportPdf(sessionId: string): Promise<Blob> {
+  const response = await fetch(`${API_BASE}/session/${sessionId}/export/pdf`);
+  if (!response.ok) {
+    throw new Error(`Failed to export PDF: ${response.status}`);
+  }
+  return response.blob();
+}
+
+/**
  * Stream file parsing progress.
  */
 export async function* streamParseFiles(

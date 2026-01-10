@@ -16,11 +16,12 @@ export interface Presentation {
 }
 
 export interface AgentLogEntry {
-  type: "tool_use" | "status" | "init";
+  type: "tool_use" | "status" | "init" | "thinking";
   timestamp: Date;
   toolName?: string;
   toolInput?: Record<string, unknown>;
   message?: string;
+  thinkingSnippet?: string;
 }
 
 export interface ChatMessage {

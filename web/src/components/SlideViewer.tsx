@@ -30,12 +30,20 @@ export function SlideViewer({
     }
   }, [currentIndex, totalSlides, onIndexChange]);
 
-  // Keyboard navigation
+  // Keyboard navigation - supports both Left/Right and Up/Down arrows
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "ArrowLeft") {
+      // Don't capture keyboard events when user is typing in an input
+      const target = e.target as HTMLElement;
+      if (target.tagName === "INPUT" || target.tagName === "TEXTAREA") {
+        return;
+      }
+
+      if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
+        e.preventDefault();
         goToPrevious();
-      } else if (e.key === "ArrowRight") {
+      } else if (e.key === "ArrowRight" || e.key === "ArrowDown") {
+        e.preventDefault();
         goToNext();
       }
     };
