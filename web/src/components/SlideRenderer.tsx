@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useLayoutEffect, useCallback, useEffect } from "react";
+import { useRef, useState, useCallback, useEffect } from "react";
 
 interface SlideRendererProps {
   html: string;
@@ -20,7 +20,6 @@ export function SlideRenderer({
   onContentChange,
 }: SlideRendererProps) {
   const contentRef = useRef<HTMLDivElement>(null);
-  const [contentScale, setContentScale] = useState(1);
   const [isEditing, setIsEditing] = useState(false);
   const [originalHtml, setOriginalHtml] = useState(html);
 
@@ -31,62 +30,8 @@ export function SlideRenderer({
     }
   }, [html, isEditing]);
 
-  // Measure true content size using an unconstrained hidden container
-  // Skip measurement during editing to prevent cursor jumping
-  useLayoutEffect(() => {
-    if (isEditing) return;
-
-    const measureContainer = document.createElement("div");
-    measureContainer.style.cssText = `
-      position: absolute;
-      visibility: hidden;
-      left: -9999px;
-      top: -9999px;
-    `;
-
-    measureContainer.innerHTML = html;
-    document.body.appendChild(measureContainer);
-
-    const allElements = measureContainer.querySelectorAll("*");
-    allElements.forEach((el) => {
-      const htmlEl = el as HTMLElement;
-      htmlEl.style.overflow = "visible";
-      htmlEl.style.maxHeight = "none";
-      htmlEl.style.height = "auto";
-    });
-
-    const rootEl = measureContainer.firstElementChild as HTMLElement;
-    if (rootEl) {
-      rootEl.style.overflow = "visible";
-      rootEl.style.height = "auto";
-      rootEl.style.maxHeight = "none";
-    }
-
-    requestAnimationFrame(() => {
-      const rect = measureContainer.getBoundingClientRect();
-      let contentWidth = rect.width;
-      let contentHeight = rect.height;
-
-      allElements.forEach((el) => {
-        const elRect = el.getBoundingClientRect();
-        const elRight = elRect.left - rect.left + elRect.width;
-        const elBottom = elRect.top - rect.top + elRect.height;
-        contentWidth = Math.max(contentWidth, elRight);
-        contentHeight = Math.max(contentHeight, elBottom);
-      });
-
-      document.body.removeChild(measureContainer);
-
-      if (contentWidth > width || contentHeight > height) {
-        const scaleX = width / contentWidth;
-        const scaleY = height / contentHeight;
-        const fitScale = Math.min(scaleX, scaleY, 1);
-        setContentScale(fitScale * 0.92);
-      } else {
-        setContentScale(1);
-      }
-    });
-  }, [html, width, height, isEditing]);
+  // No dynamic measurement - AI generates 960x540 content, use fixed scale
+  // Scale = container_size / base_size = scale prop (already passed in)
 
   const enterEditMode = useCallback(() => {
     if (!editable) return;
@@ -130,7 +75,8 @@ export function SlideRenderer({
     [exitEditMode]
   );
 
-  const totalScale = contentScale * scale;
+  // Fixed scale - AI generates 960x540 content, scale to fit container
+  const totalScale = scale;
 
   return (
     <div className="flex flex-col items-center gap-2">
