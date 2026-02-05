@@ -60,5 +60,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Security policy
 - Code of conduct
 
-[Unreleased]: https://github.com/yourorg/presentation_app/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/yourorg/presentation_app/releases/tag/v0.1.0
+[Unreleased]: https://github.com/abhilashjaiswal0110/presentation_app/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/abhilashjaiswal0110/presentation_app/releases/tag/v0.1.0

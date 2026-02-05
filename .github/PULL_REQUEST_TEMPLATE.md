@@ -69,7 +69,7 @@ Fixes #
 - [ ] I have made corresponding changes to the documentation
 - [ ] I have updated the README if needed
 - [ ] I have added/updated docstrings for new/modified functions
-- [ ] I have updated TECHNICAL_DOCUMENTATION.md if needed
+- [ ] I have updated docs/technical/README.md if needed
 
 ### Testing
 - [ ] I have added tests that prove my fix is effective or that my feature works

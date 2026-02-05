@@ -18,8 +18,8 @@ The Presentation App team takes security vulnerabilities seriously. We appreciat
 
 Instead, please report security vulnerabilities via one of the following methods:
 
-1. **Email**: Send details to [security@yourorganization.com](mailto:security@yourorganization.com)
-2. **GitHub Security Advisories**: Use the [Security Advisory](https://github.com/yourorg/presentation_app/security/advisories/new) feature
+1. **GitHub Security Advisories**: Use the [Security Advisory](https://github.com/abhilashjaiswal0110/presentation_app/security/advisories/new) feature (Recommended)
+2. **Email**: Contact the repository owner through GitHub
 
 ### What to Include
 
@@ -327,9 +327,9 @@ For enterprise deployments:
 
 For security-related questions or concerns:
 
-- **Email**: security@yourorganization.com
-- **PGP Key**: [Link to public PGP key if applicable]
-- **Security Page**: https://yourorganization.com/security
+- **GitHub Security**: [Create a Security Advisory](https://github.com/abhilashjaiswal0110/presentation_app/security/advisories/new)
+- **GitHub Issues**: For non-sensitive security improvements
+- **Repository Owner**: Contact through GitHub profile
 
 ---
 

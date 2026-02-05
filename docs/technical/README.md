@@ -391,8 +391,18 @@ presentation_app/
 ├── .gitignore                 # Git ignore rules
 ├── .env.example               # Root environment template
 ├── README.md                  # User documentation
-├── TECHNICAL_DOCUMENTATION.md # This document
-└── render.yaml                # Render.com deployment config
+├── CHANGELOG.md               # Version history
+├── CONTRIBUTING.md            # Contribution guidelines
+├── SECURITY.md                # Security policy
+├── CODE_OF_CONDUCT.md         # Community guidelines
+├── LICENSE                    # MIT License
+├── docs/                      # Documentation folder
+│   ├── README.md             # Documentation index
+│   ├── setup-guide.md        # Setup instructions
+│   ├── quick-reference.md    # Developer cheat sheet
+│   └── technical/
+│       └── README.md         # Technical documentation (this document)
+└── render.yaml               # Render.com deployment config
 ```
 
 ---

@@ -159,10 +159,10 @@ Examples:
 
 ## 🆘 Need Help?
 
-1. Check `SETUP.md` Troubleshooting section
+1. Check [Setup Guide](setup-guide.md) Troubleshooting section
 2. Search GitHub Issues
 3. Create new issue with template
-4. Read `TECHNICAL_DOCUMENTATION.md`
+4. Read [Technical Documentation](technical/README.md)
 
 ---
 

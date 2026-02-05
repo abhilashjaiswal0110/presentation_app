@@ -92,7 +92,7 @@ npm run dev
 ### Reporting Bugs
 
 Before creating a bug report:
-- Check the [existing issues](https://github.com/yourorg/presentation_app/issues) to avoid duplicates
+- Check the [existing issues](https://github.com/abhilashjaiswal0110/presentation_app/issues) to avoid duplicates
 - Collect information about the bug (error messages, logs, screenshots)
 - Determine the steps to reproduce the issue
 
@@ -449,8 +449,8 @@ Fixes #456
 
 ### Getting Help
 
-- **Questions**: Open a [GitHub Discussion](https://github.com/yourorg/presentation_app/discussions)
-- **Bugs**: Create an [Issue](https://github.com/yourorg/presentation_app/issues)
+- **Questions**: Open a [GitHub Discussion](https://github.com/abhilashjaiswal0110/presentation_app/discussions)
+- **Bugs**: Create an [Issue](https://github.com/abhilashjaiswal0110/presentation_app/issues)
 - **Security**: See [SECURITY.md](SECURITY.md)
 
 ### Communication Channels
