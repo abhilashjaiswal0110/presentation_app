@@ -26,6 +26,12 @@ ENV/
 .env.*.local
 .env.development
 .env.production
+.env.test
+backend/.env
+web/.env.local
+web/.env.development.local
+web/.env.production.local
+web/.env.test.local
 
 # IDE
 .idea/
