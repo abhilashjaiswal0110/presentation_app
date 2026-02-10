@@ -853,17 +853,20 @@ async def _build_multimodal_prompt(
 # =============================================================================
 
 def _preprocess_instructions(instructions: str) -> str:
-    """Normalize multi-quoted instructions into a single unambiguous slide plan.
+    """Normalize instructions containing multiple quoted segments into a single
+    unambiguous slide plan.
 
-    Handles the common pattern where the user pastes multiple quoted instructions
-    separated by ' - ', e.g.:
+    Handles the common pattern where the user pastes several double-quoted
+    instructions separated by delimiters such as " - ", e.g.:
         "Create a 2-slide deck about machine learning"
             - "Add a slide about neural networks with bullet points"
             - "Make the title slide more engaging"
 
-    Extracts the primary topic and synthesises a slide-by-slide plan so the agent
-    receives a clear, imperative, topic-explicit instruction instead of ambiguous
-    quoted meta-text.
+    When at least two quoted segments are present, extracts the primary topic
+    and synthesises a slide-by-slide plan so the agent receives clear,
+    imperative, topic-explicit instructions instead of ambiguous quoted
+    meta-text. If fewer than two quoted segments are found, returns the
+    original instructions unchanged.
     """
     import re
 
@@ -909,7 +912,8 @@ def _preprocess_instructions(instructions: str) -> str:
             if m:
                 topic = m.group(1).strip().rstrip('.,;')
 
-        # Extract requested slide count: "2-slide", "3 slide", "five slides" etc.
+        # Extract requested slide count: "2-slide", "3 slide" etc.
+        # Note: Currently only supports numeric digits, not spelled-out numbers
         if not slide_count:
             m = re.search(r'(\d+)[- ]slide', q, re.IGNORECASE)
             if m:
@@ -921,13 +925,36 @@ def _preprocess_instructions(instructions: str) -> str:
 
     title_slides: list[str] = []
     content_slides: list[str] = []
+    seeded_from_create = False
 
     for q in quoted:
         q = q.strip()
         lower = q.lower()
 
-        # "Create X-slide deck about TOPIC" — drives topic/count; skip as a slide entry
+        # "Create X-slide deck about TOPIC" — drives topic/count; also seed default slides if needed
         if re.search(r'\bcreate\b.*\bdeck\b|\bcreate\b.*\bpresentation\b|\bcreate\b.*\bslides?\b', lower):
+            if slide_count and not seeded_from_create:
+                # Use the parsed topic if available; otherwise fall back to this quote text
+                topic_for_defaults = topic or q
+
+                # Ensure we have at least a title slide
+                if not title_slides:
+                    title_slides.append(
+                        f"Slide 1 (Title): A clear title slide about '{topic_for_defaults}'."
+                    )
+
+                # Pad with generic content slides up to the requested slide_count
+                total_existing = len(title_slides) + len(content_slides)
+                remaining = slide_count - total_existing
+                for i in range(max(0, remaining)):
+                    slide_index = len(title_slides) + len(content_slides) + 1
+                    content_slides.append(
+                        f"Content slide — Key point {i + 1} about {topic_for_defaults} (Slide {slide_index})."
+                    )
+
+                seeded_from_create = True
+
+            # Do not treat this high-level instruction as a separate content slide
             continue
 
         # Title slide (engaging variant)
@@ -962,6 +989,19 @@ def _preprocess_instructions(instructions: str) -> str:
 
     # Title slides always come first
     slide_instructions: list[str] = title_slides + content_slides
+
+    # Ensure slide_instructions matches the requested slide_count (if specified)
+    if slide_count and len(slide_instructions) != slide_count:
+        if len(slide_instructions) < slide_count:
+            # Pad with additional content slides
+            topic_for_padding = topic or "the topic"
+            for i in range(len(slide_instructions), slide_count):
+                slide_instructions.append(
+                    f"Content slide — Additional point {i} about {topic_for_padding} (Slide {i + 1})."
+                )
+        else:
+            # Trim to the requested count
+            slide_instructions = slide_instructions[:slide_count]
 
     # ------------------------------------------------------------------ #
     # Build the final synthesised instruction                             #
@@ -1104,19 +1144,27 @@ async def run_agent_stream(
     # Automatic retry when agent produced 0 slides (clarification loop guard)
     # --------------------------------------------------------------------------
     slide_count = len(session.presentation.slides) if session.presentation else 0
+    pending_edits_count = len(session.pending_edits) if hasattr(session, "pending_edits") else 0
 
-    if slide_count == 0 and not is_continuation and agent_session_id:
+    if slide_count == 0 and pending_edits_count == 0 and not is_continuation and agent_session_id:
         logger.warning(
             f"Agent produced 0 slides on first run — retrying as continuation. "
             f"agent_session_id={agent_session_id}"
         )
         yield {"type": "status", "message": "Retrying slide creation..."}
 
+        # Determine minimum required slides from the preprocessed instructions
+        # Extract any slide count mentioned in the original request
+        import re
+        slide_count_match = re.search(r'(\d+)[- ]slide', raw_instructions, re.IGNORECASE)
+        min_slides = int(slide_count_match.group(1)) if slide_count_match else 1
+        min_slides_phrase = f"at least {min_slides} time{'s' if min_slides > 1 else ''}" if min_slides > 1 else "at least once"
+
         retry_text = (
             "You have not created any slides yet. This is not acceptable.\n\n"
             "Follow the MANDATORY workflow RIGHT NOW — no questions, no clarification:\n"
             "1. Call create_presentation with a title derived from the user's topic\n"
-            "2. Call add_slide at least twice with complete HTML slide content\n"
+            f"2. Call add_slide {min_slides_phrase} with complete HTML slide content\n"
             "3. Call commit_edits to save everything\n\n"
             f"The user's original request was:\n{raw_instructions}"
         )
@@ -1167,11 +1215,20 @@ async def run_agent_stream(
 
     slide_count = len(session.presentation.slides) if session.presentation else 0
     if slide_count == 0:
-        logger.warning(
+        logger.error(
             f"Agent completed with 0 slides after retry. "
             f"Presentation: {session.presentation is not None}, "
             f"Pending edits: {len(session.pending_edits)}"
         )
+        # Emit error event to signal failure to the frontend
+        yield {
+            "type": "error",
+            "error": "Agent failed to create any slides. Please try again with a more specific request.",
+            "message_count": message_count,
+            "session_id": agent_session_id,
+            "user_session_id": session.session_id
+        }
+        return
 
     yield {
         "type": "complete",
