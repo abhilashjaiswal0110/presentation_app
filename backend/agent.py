@@ -86,6 +86,7 @@ async def tool_create_presentation(args: dict[str, Any]) -> dict[str, Any]:
     """Create a new presentation with the given title."""
     session = get_current_session()
     if not session:
+        logger.error("create_presentation called with no active session")
         return {"error": "No active session"}
 
     title = args.get("title", "Untitled Presentation")
@@ -93,6 +94,7 @@ async def tool_create_presentation(args: dict[str, Any]) -> dict[str, Any]:
     session.pending_edits = []
     session.applied_edits = []
 
+    logger.info(f"Created presentation: '{title}'")
     return {"success": True, "title": title, "slide_count": 0}
 
 
@@ -105,8 +107,10 @@ async def tool_add_slide(args: dict[str, Any]) -> dict[str, Any]:
     """Add a new slide to the presentation."""
     session = get_current_session()
     if not session:
+        logger.error("add_slide called with no active session")
         return {"error": "No active session"}
     if not session.presentation:
+        logger.error("add_slide called but no presentation exists - agent should call create_presentation first")
         return {"error": "No presentation created. Use create_presentation first."}
 
     html = args.get("html", "")
@@ -139,6 +143,7 @@ async def tool_add_slide(args: dict[str, Any]) -> dict[str, Any]:
     )
     session.pending_edits.append(edit)
 
+    logger.info(f"Added slide at position {index + 1} (pending commit)")
     return {"success": True, "slide_index": index, "edit_id": edit.edit_id}
 
 
@@ -321,8 +326,10 @@ async def tool_commit_edits(args: dict[str, Any]) -> dict[str, Any]:
     """Apply all pending edits."""
     session = get_current_session()
     if not session:
+        logger.error("commit_edits called with no active session")
         return {"error": "No active session"}
     if not session.presentation:
+        logger.error("commit_edits called but no presentation exists")
         return {"error": "No presentation created"}
 
     applied_count = 0
@@ -377,6 +384,7 @@ async def tool_commit_edits(args: dict[str, Any]) -> dict[str, Any]:
     # Save session
     session_manager.save_session(session)
 
+    logger.info(f"Committed {applied_count} edits, total slides: {len(session.presentation.slides)}")
     return {
         "success": True,
         "applied_count": applied_count,
@@ -409,12 +417,22 @@ TOOL_MAP = {func._tool_name: func for func in PRESENTATION_TOOLS if hasattr(func
 # SYSTEM PROMPTS
 # =============================================================================
 
-SYSTEM_PROMPT_NEW = """You are a presentation creation assistant. Create professional slides using HTML.
+SYSTEM_PROMPT_NEW = """You are a presentation creation assistant. Your job is to ALWAYS convert user requests into professional presentation slides.
 
-WORKFLOW:
-1. Use create_presentation to start a new presentation with a title
-2. Use add_slide to add slides with HTML content
-3. Use commit_edits to finalize and save all changes
+CRITICAL REQUIREMENT:
+- You MUST create presentation slides for EVERY user request
+- Even if the user doesn't explicitly ask for "slides" or a "presentation", convert their content into slides
+- ALWAYS follow the complete workflow below - no exceptions
+
+WORKFLOW (MANDATORY):
+1. Use create_presentation to start a new presentation with an appropriate title
+2. Use add_slide to add slides with HTML content (at least 1 slide, typically 3-6 slides)
+3. Use commit_edits to finalize and save all changes - THIS IS REQUIRED
+
+EXAMPLE: If user asks "Create a LinkedIn summary about my skills", you MUST:
+- Call create_presentation with title "Professional LinkedIn Summary"
+- Call add_slide multiple times to create slides covering the content
+- Call commit_edits to save the presentation
 
 CRITICAL - SLIDE DIMENSIONS:
 - Slides are EXACTLY 960px wide x 540px tall (16:9 aspect ratio)
@@ -899,6 +917,13 @@ async def run_agent_stream(
     session.claude_session_id = agent_session_id
     session_manager.save_session(session)
 
+    # Check if slides were created
+    slide_count = len(session.presentation.slides) if session.presentation else 0
+    if slide_count == 0:
+        logger.warning(f"Agent completed but created 0 slides. "
+                      f"Presentation: {session.presentation is not None}, "
+                      f"Pending edits: {len(session.pending_edits)}")
+
     # Yield final summary
     yield {
         "type": "complete",
@@ -907,5 +932,5 @@ async def run_agent_stream(
         "message_count": message_count,
         "session_id": agent_session_id,
         "user_session_id": session.session_id,
-        "slide_count": len(session.presentation.slides) if session.presentation else 0
+        "slide_count": slide_count
     }

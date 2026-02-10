@@ -1,7 +1,7 @@
 # Presentation App
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 [![Node.js 18+](https://img.shields.io/badge/node.js-18+-green.svg)](https://nodejs.org/)
 
 AI-powered presentation generation application that creates professional slide decks through natural language conversation. Built with Claude AI, FastAPI, and Next.js.
@@ -29,7 +29,7 @@ AI-powered presentation generation application that creates professional slide d
 
 ### Prerequisites
 
-- Python 3.10 or higher
+- Python 3.12 or higher
 - Node.js 18.x or higher
 - Anthropic API key ([Get one here](https://console.anthropic.com/))
 - LlamaCloud API key (optional, for document parsing - [Get one here](https://cloud.llamaindex.ai/))
@@ -81,7 +81,7 @@ AI-powered presentation generation application that creates professional slide d
    ```bash
    cd backend
    source venv/bin/activate  # On Windows: venv\Scripts\activate
-   uvicorn main:app --reload --host 0.0.0.0 --port 8000
+   python main.py             # Starts on :8000 — loads .env automatically
    ```
    
    In another terminal (frontend):
@@ -111,10 +111,10 @@ AI-powered presentation generation application that creates professional slide d
 
 **Technology Stack:**
 - **Frontend**: Next.js 15, React 19, TypeScript, Tailwind CSS
-- **Backend**: FastAPI, Python 3.10+, Claude Agent SDK
-- **AI**: Anthropic Claude (Sonnet 4)
-- **Document Processing**: LlamaCloud Services
-- **Export**: Node.js + pptxgenjs
+- **Backend**: FastAPI, Python 3.12+, Claude Agent SDK
+- **AI**: Anthropic Claude (claude-sonnet-4-5)
+- **Document Processing**: LlamaCloud Services (LlamaParse)
+- **Export**: Node.js + pptxgenjs + Puppeteer (PDF)
 
 ## 📖 Usage
 
@@ -148,15 +148,18 @@ See [`.env.example`](.env.example) files for complete configuration options.
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/agent` | POST | Stream agent interaction for presentation creation |
+| `/health` | GET | Health check — returns `{"status": "healthy"}` |
+| `/agent-stream` | POST | Stream agent interaction for presentation creation (SSE) |
 | `/validate-api-key` | POST | Validate LlamaCloud API key |
 | `/validate-anthropic-key` | POST | Validate Anthropic API key |
-| `/parse-context-file` | POST | Parse uploaded document |
-| `/export-pptx` | POST | Export presentation to PPTX |
-| `/reset-session` | POST | Reset session state |
-| `/session/{session_id}` | GET | Get session state |
-| `/health` | GET | Health check |
-| `/docs` | GET | Interactive API documentation |
+| `/parse-files` | POST | Parse uploaded context documents (SSE) |
+| `/parse-template` | POST | Parse PPTX template and extract style screenshots |
+| `/session/{session_id}` | GET | Get session state and presentation data |
+| `/session/{session_id}/slides` | GET | List all slides in a session |
+| `/session/{session_id}/slides/{idx}` | PATCH | Update a specific slide's HTML content |
+| `/session/{session_id}/export` | GET | Export presentation as PPTX file |
+| `/session/{session_id}/export/pdf` | GET | Export presentation as PDF file |
+| `/docs` | GET | Interactive Swagger UI (auto-generated) |
 
 For detailed API documentation, visit `/docs` when the backend is running or see [Technical Documentation](docs/technical/README.md).
 
@@ -183,37 +186,40 @@ Security is a top priority. Please review our [Security Policy](SECURITY.md) for
 
 ```
 presentation_app/
-├── backend/                    # Python FastAPI backend
-│   ├── agent.py               # Claude Agent SDK integration
-│   ├── main.py                # FastAPI application
-│   ├── models.py              # Data models
-│   ├── session.py             # Session management
-│   ├── parser.py              # Document parsing
-│   ├── requirements.txt       # Python dependencies
-│   ├── .env.example           # Environment template
-│   └── pptx_converter/        # Node.js PPTX export
-├── web/                        # Next.js frontend
+├── backend/                       # Python FastAPI backend
+│   ├── agent.py                   # Claude Agent SDK, MCP tool definitions, system prompts
+│   ├── main.py                    # FastAPI app — entry point: python main.py
+│   ├── models.py                  # Pydantic data models (Presentation, Slide, etc.)
+│   ├── session.py                 # SQLite-backed session persistence
+│   ├── parser.py                  # LlamaParse integration for document/template parsing
+│   ├── requirements.txt           # Python 3.12+ dependencies
+│   ├── .env.example               # Environment variable template
+│   ├── manual_ppt_verification.py # Manual integration test script
+│   └── pptx_converter/            # Node.js service: HTML → PPTX/PDF
+│       ├── convert.js             # PPTX export via pptxgenjs
+│       ├── convert-pdf.js         # PDF export via Puppeteer
+│       └── package.json           # Node.js dependencies
+├── web/                           # Next.js 15 frontend
 │   ├── src/
-│   │   ├── app/               # Next.js pages
-│   │   ├── components/        # React components
-│   │   ├── lib/               # API client
-│   │   └── types/             # TypeScript types
-│   ├── package.json           # Node dependencies
-│   └── .env.example           # Environment template
-├── .env.example               # Root environment template
-├── .gitignore                 # Git ignore rules
-├── README.md                  # This file
-├── CONTRIBUTING.md            # Contribution guidelines
-├── SECURITY.md                # Security policy
-├── CODE_OF_CONDUCT.md         # Community guidelines
-├── LICENSE                    # MIT License
-├── CHANGELOG.md               # Version history
-└── docs/                      # Documentation
-    ├── README.md              # Documentation index
-    ├── setup-guide.md         # Setup instructions
-    ├── quick-reference.md     # Developer cheat sheet
-    └── technical/             # Technical documentation
-        └── README.md          # Complete technical guide
+│   │   ├── app/                   # Next.js App Router pages
+│   │   ├── components/            # React components
+│   │   ├── lib/                   # API client (SSE streaming) + session helpers
+│   │   └── types/                 # TypeScript type definitions
+│   ├── package.json               # Node.js dependencies
+│   └── .env.example               # Frontend environment template
+├── docs/                          # Documentation
+│   ├── README.md                  # Documentation index
+│   ├── setup-guide.md             # Detailed setup instructions
+│   ├── quick-reference.md         # Developer cheat sheet
+│   └── technical/
+│       └── README.md              # Architecture, API reference, deployment
+├── .gitignore                     # Git ignore rules
+├── README.md                      # This file
+├── CONTRIBUTING.md                # Contribution and commit guidelines
+├── SECURITY.md                    # Security policy
+├── CODE_OF_CONDUCT.md             # Community guidelines
+├── LICENSE                        # MIT License
+└── CHANGELOG.md                   # Version history
 ```
 
 ## 📝 License

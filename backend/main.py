@@ -8,17 +8,33 @@ This server provides endpoints for:
 - Context file parsing with LlamaParse
 """
 
+import os
+from pathlib import Path
+
+# Load environment variables from .env file
+# Use override=False to let environment variables take precedence over .env file
+# This prevents accidentally overriding production secrets/config in deployments
+from dotenv import load_dotenv
+
+# Explicitly load from backend/.env if it exists, fallback mode for dev
+env_path = Path(__file__).parent / ".env"
+load_dotenv(dotenv_path=env_path, override=False)
+
 import asyncio
 import json
-import os
 import logging
 from datetime import datetime, timedelta
 from contextlib import asynccontextmanager
 from typing import Optional
+from pathlib import Path
 
 from fastapi import FastAPI, Form, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, Response
+
+# Temporary files directory - use .tmp in project root
+TMP_DIR = Path(__file__).parent.parent / ".tmp"
+TMP_DIR.mkdir(parents=True, exist_ok=True)
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -343,12 +359,17 @@ async def export_pptx(session_id: str):
         "theme": session.presentation.theme
     }
 
-    # Create temp files
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
-        json.dump(input_data, f)
-        input_path = f.name
+    # Create temp files in .tmp directory
+    import uuid
+    temp_id = uuid.uuid4().hex[:8]
+    input_path = TMP_DIR / f"pptx_input_{temp_id}.json"
+    output_path = TMP_DIR / f"pptx_output_{temp_id}.pptx"
 
-    output_path = tempfile.mktemp(suffix='.pptx')
+    with open(input_path, 'w') as f:
+        json.dump(input_data, f)
+
+    input_path = str(input_path)
+    output_path = str(output_path)
 
     try:
         # Run Node.js converter
@@ -416,12 +437,17 @@ async def export_pdf(session_id: str):
         "theme": session.presentation.theme
     }
 
-    # Create temp files
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
-        json.dump(input_data, f)
-        input_path = f.name
+    # Create temp files in .tmp directory
+    import uuid
+    temp_id = uuid.uuid4().hex[:8]
+    input_path = TMP_DIR / f"pdf_input_{temp_id}.json"
+    output_path = TMP_DIR / f"pdf_output_{temp_id}.pdf"
 
-    output_path = tempfile.mktemp(suffix='.pdf')
+    with open(input_path, 'w') as f:
+        json.dump(input_data, f)
+
+    input_path = str(input_path)
+    output_path = str(output_path)
 
     try:
         # Run Node.js PDF converter

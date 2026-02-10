@@ -16,10 +16,11 @@ Before you begin, ensure you have the following installed:
 
 ### Required Software
 
-1. **Python 3.10 or higher**
+1. **Python 3.12 or higher**
    - Check version: `python --version` or `python3 --version`
    - Download: https://www.python.org/downloads/
    - **Windows Users**: Make sure to check "Add Python to PATH" during installation
+   - **Note**: Python 3.12 is the minimum supported version
 
 2. **Node.js 18.x or higher**
    - Check version: `node --version`
@@ -138,10 +139,11 @@ cd backend
 # Windows: venv\Scripts\activate
 # macOS/Linux: source venv/bin/activate
 
-# Start the FastAPI server
-uvicorn main:app --reload --host 0.0.0.0 --port 8000
+# Start the FastAPI server (loads .env automatically)
+python main.py
 
 # You should see:
+# INFO:     Started server process
 # INFO:     Uvicorn running on http://0.0.0.0:8000
 # INFO:     Application startup complete
 ```
@@ -328,10 +330,16 @@ venv\Scripts\activate     # Windows
 pip install package-name
 pip freeze > requirements.txt  # Update requirements
 
-# Run with different settings
-uvicorn main:app --reload --host 0.0.0.0 --port 8000 --log-level debug
+# Start backend server (standard)
+python main.py
 
-# Run tests
+# Run with custom settings (e.g. different port or debug logging)
+uvicorn main:app --reload --host 0.0.0.0 --port 8001 --log-level debug
+
+# Run integration test (requires running backend)
+python manual_ppt_verification.py
+
+# Run unit tests
 pytest
 pytest -v  # verbose
 pytest --cov  # with coverage
@@ -396,7 +404,7 @@ If you're still having issues:
 
 Before starting development, verify:
 
-- [ ] Python 3.10+ installed
+- [ ] Python 3.12+ installed
 - [ ] Node.js 18+ installed
 - [ ] Git installed
 - [ ] Anthropic API key obtained

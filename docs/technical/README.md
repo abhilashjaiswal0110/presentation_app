@@ -1,7 +1,7 @@
 # Technical Documentation
 
 **Version:** 1.0  
-**Last Updated:** February 5, 2026  
+**Last Updated:** February 10, 2026
 **Audience:** Developers, DevOps Engineers, Technical Architects
 
 ---
@@ -107,9 +107,9 @@ The Presentation App is an AI-powered presentation generation system that enable
 
 #### Backend (FastAPI)
 - **Framework**: FastAPI
-- **Language**: Python 3.10+
+- **Language**: Python 3.12+
 - **AI Integration**: Claude Agent SDK, Anthropic SDK
-- **Document Processing**: LlamaCloud Services
+- **Document Processing**: LlamaCloud Services (LlamaParse)
 - **Persistence**: SQLite + File System
 
 #### Export Layer (Node.js)
@@ -120,7 +120,7 @@ The Presentation App is an AI-powered presentation generation system that enable
 ### 2.3 Data Flow
 
 1. **User Input** → Frontend captures message
-2. **API Request** → POST to `/agent` endpoint with session context
+2. **API Request** → POST to `/agent-stream` endpoint with session context
 3. **Agent Processing** → Claude processes request using defined tools
 4. **Tool Execution** → Backend executes presentation manipulation tools
 5. **State Updates** → Session state persisted to SQLite + filesystem
@@ -159,9 +159,10 @@ anthropic>=0.52.0             # Anthropic API client
 claude-agent-sdk>=0.1.0       # Claude Agent SDK
 pydantic>=2.0.0               # Data validation
 python-multipart>=0.0.6       # File upload support
-llama-cloud-services>=0.6.0   # Document parsing
-mcp>=1.0.0                    # Model Context Protocol
+llama-cloud-services>=0.6.0   # Document parsing (LlamaParse)
+mcp>=1.26.0                   # Model Context Protocol
 httpx>=0.27.0                 # Async HTTP client
+python-dotenv>=1.0.0          # .env file loading at startup
 ```
 
 ### 3.3 Export Dependencies
@@ -185,7 +186,7 @@ httpx>=0.27.0                 # Async HTTP client
 
 ### 4.1 Prerequisites
 
-- **Python**: 3.10 or higher
+- **Python**: 3.12 or higher
 - **Node.js**: 18.x or higher
 - **npm**: 9.x or higher
 - **Git**: Latest version
@@ -244,7 +245,7 @@ cp .env.example .env.local
 # 4. Start the application
 # Terminal 1 - Backend:
 cd backend
-uvicorn main:app --reload --host 0.0.0.0 --port 8000
+python main.py
 
 # Terminal 2 - Frontend:
 cd web

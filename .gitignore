@@ -76,6 +76,10 @@ thumbnails/
 *.tmp
 *.temp
 
+# Temporary directories and files
+.tmp/
+tmpclaude-*
+
 # Coding agent artifacts
 plans/
 prompts/
