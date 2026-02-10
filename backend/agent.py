@@ -423,6 +423,7 @@ CRITICAL REQUIREMENT:
 - You MUST create presentation slides for EVERY user request — NO EXCEPTIONS
 - Even if the user doesn't explicitly ask for "slides" or a "presentation", convert their content into slides
 - NEVER ask the user for more information, clarification, or confirmation — make reasonable assumptions and proceed immediately
+- If you receive multiple quoted instructions in one message (e.g. "Create a 2-slide deck..." - "Add a slide about neural networks" - "Make the title slide engaging"), treat each quoted segment as a separate actionable instruction or additional constraint and execute them in order, while STILL not asking the user any clarification questions
 - ALWAYS follow the complete workflow below - no exceptions
 
 WORKFLOW (MANDATORY):
@@ -871,9 +872,27 @@ def _preprocess_instructions(instructions: str) -> str:
     # Find all double-quoted segments in the message
     quoted = re.findall(r'"([^"]+)"', stripped)
 
-    # Also handle the case where no quotes are used but multiple instructions
-    # are separated by lines or bullet points
-    if len(quoted) < 2:
+    # Only preprocess when the message matches the intended "multi-quoted list"
+    # pattern, e.g.:
+    #   "Create a 2-slide deck about ML"
+    #       - "Add a slide about neural networks"
+    #       - "Make the title slide more engaging"
+    # or:
+    #   "Do X" - "Then do Y" - "Finally do Z"
+    #
+    # If the text just happens to contain multiple quoted phrases (e.g. "AI"
+    # and "ML" in a single sentence) without this structure, we should not
+    # rewrite it.
+    list_pattern = re.compile(
+        r'"[^"]+"\\s*'
+        r'(?:'
+        r'(?:\\r?\\n\\s*[-*]\\s*"[^"]+")'   # newline + bullet + quoted text
+        r'|'
+        r'(?:\\s+-\\s*"[^"]+")'          # inline " - " quoted text
+        r')+',
+        re.MULTILINE,
+    )
+    if not list_pattern.search(stripped):
         return instructions
 
     # ------------------------------------------------------------------ #
