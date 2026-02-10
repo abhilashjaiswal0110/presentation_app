@@ -8,13 +8,20 @@ This server provides endpoints for:
 - Context file parsing with LlamaParse
 """
 
+import os
+from pathlib import Path
+
 # Load environment variables from .env file
+# Use override=False to let environment variables take precedence over .env file
+# This prevents accidentally overriding production secrets/config in deployments
 from dotenv import load_dotenv
-load_dotenv(override=True)  # Override system environment variables
+
+# Explicitly load from backend/.env if it exists, fallback mode for dev
+env_path = Path(__file__).parent / ".env"
+load_dotenv(dotenv_path=env_path, override=False)
 
 import asyncio
 import json
-import os
 import logging
 from datetime import datetime, timedelta
 from contextlib import asynccontextmanager
@@ -353,7 +360,6 @@ async def export_pptx(session_id: str):
     }
 
     # Create temp files in .tmp directory
-    import tempfile
     import uuid
     temp_id = uuid.uuid4().hex[:8]
     input_path = TMP_DIR / f"pptx_input_{temp_id}.json"

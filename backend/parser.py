@@ -123,9 +123,12 @@ async def parse_with_llama(
     )
 
     # Write to temp file in .tmp directory
+    # Sanitize filename to prevent path traversal attacks
     import uuid
+    from pathlib import Path as PathLib
     temp_id = uuid.uuid4().hex[:8]
-    temp_path = TMP_DIR / f"parse_{temp_id}_{filename}"
+    safe_filename = PathLib(filename).name  # Extract basename only
+    temp_path = TMP_DIR / f"parse_{temp_id}_{safe_filename}"
 
     with open(temp_path, 'wb') as f:
         f.write(content)
@@ -202,9 +205,12 @@ async def parse_template_with_screenshots(
         )
 
         # Write to temp file in .tmp directory
+        # Sanitize filename to prevent path traversal attacks
         import uuid
+        from pathlib import Path as PathLib
         temp_id = uuid.uuid4().hex[:8]
-        temp_path = TMP_DIR / f"template_{temp_id}_{filename}"
+        safe_filename = PathLib(filename).name  # Extract basename only
+        temp_path = TMP_DIR / f"template_{temp_id}_{safe_filename}"
 
         with open(temp_path, 'wb') as f:
             f.write(content)

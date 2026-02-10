@@ -194,7 +194,7 @@ presentation_app/
 │   ├── parser.py                  # LlamaParse integration for document/template parsing
 │   ├── requirements.txt           # Python 3.12+ dependencies
 │   ├── .env.example               # Environment variable template
-│   ├── test_ppt_creation.py       # End-to-end integration test
+│   ├── manual_ppt_verification.py # Manual integration test script
 │   └── pptx_converter/            # Node.js service: HTML → PPTX/PDF
 │       ├── convert.js             # PPTX export via pptxgenjs
 │       ├── convert-pdf.js         # PDF export via Puppeteer

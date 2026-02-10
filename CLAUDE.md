@@ -19,7 +19,7 @@ backend/
   session.py            # Session persistence (SQLite-backed)
   models.py             # Pydantic data models (Presentation, Slide, PendingEdit)
   pptx_converter/       # Node.js service: HTML → PPTX/PDF via pptxgenjs + Puppeteer
-  test_ppt_creation.py  # End-to-end integration test (requires running backend)
+  manual_ppt_verification.py  # End-to-end integration test (requires running backend)
 
 web/src/
   app/page.tsx          # Main app component
@@ -96,7 +96,7 @@ Tools exposed via in-process MCP server (`create_sdk_mcp_server`):
 ```bash
 # With backend running on :8000
 cd backend
-python test_ppt_creation.py
+python manual_ppt_verification.py
 ```
 
 Verifies: agent stream → session creation → PPTX export end-to-end.

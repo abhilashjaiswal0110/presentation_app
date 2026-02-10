@@ -337,7 +337,7 @@ python main.py
 uvicorn main:app --reload --host 0.0.0.0 --port 8001 --log-level debug
 
 # Run integration test (requires running backend)
-python test_ppt_creation.py
+python manual_ppt_verification.py
 
 # Run unit tests
 pytest
