@@ -827,8 +827,49 @@ async def _build_multimodal_prompt(
 
 
 # =============================================================================
+# INPUT PRE-PROCESSING
+# =============================================================================
+
+def _preprocess_instructions(instructions: str) -> str:
+    """Normalize multi-quoted instructions into a single unambiguous request.
+
+    Handles the README-style example pattern:
+        "Create a deck about X" - "Add a slide about Y" - "Make it engaging"
+    and converts it to a numbered-list task so the agent acts on all parts
+    rather than treating them as meta-commentary or asking for clarification.
+    """
+    import re
+
+    # Find all double-quoted segments in the message
+    quoted = re.findall(r'"([^"]+)"', instructions.strip())
+
+    if len(quoted) >= 2:
+        parts = "\n".join(f"{i + 1}. {q.strip()}" for i, q in enumerate(quoted))
+        return (
+            "Create a presentation that fulfills ALL of the following requirements:\n"
+            f"{parts}\n\n"
+            "Execute every requirement now. "
+            "Call create_presentation first, then add_slide for each slide, then commit_edits."
+        )
+
+    return instructions
+
+
+# =============================================================================
 # AGENT STREAMING
 # =============================================================================
+
+async def _simple_prompt(text: str) -> AsyncGenerator[dict, None]:
+    """Yield a single plain-text user message in SDK wire format."""
+    yield {
+        "type": "user",
+        "message": {
+            "role": "user",
+            "content": [{"type": "text", "text": text}]
+        },
+        "parent_tool_use_id": None,
+    }
+
 
 async def run_agent_stream(
     instructions: str,
@@ -864,6 +905,14 @@ async def run_agent_stream(
     if context_files:
         session.context_files = context_files
 
+    # Normalize multi-quoted or ambiguous instructions before sending to agent
+    raw_instructions = instructions
+    effective_instructions = (
+        instructions if is_continuation else _preprocess_instructions(instructions)
+    )
+    if effective_instructions != instructions:
+        print(f"[Agent Stream] Instructions pre-processed from multi-quoted format")
+
     set_current_session(session)
 
     yield {"type": "init", "message": "Starting agent...", "session_id": session.session_id}
@@ -879,14 +928,12 @@ async def run_agent_stream(
             print(f"[Agent Stream] Connected, sending query...")
             yield {"type": "status", "message": "Agent connected, processing..."}
 
-            # Use multimodal prompt if style template has screenshots
-            await client.query(_build_multimodal_prompt(session, instructions))
+            await client.query(_build_multimodal_prompt(session, effective_instructions))
 
             async for message in client.receive_response():
                 message_count += 1
                 msg_type = type(message).__name__
 
-                # Log message
                 if isinstance(message, AssistantMessage):
                     for block in message.content:
                         if isinstance(block, TextBlock):
@@ -897,7 +944,6 @@ async def run_agent_stream(
                             block_type = type(block).__name__
                             print(f"[Agent Stream] #{message_count} {msg_type}/{block_type}")
                 elif ResultMessage and isinstance(message, ResultMessage):
-                    # Extract session_id from ResultMessage for multi-turn support
                     agent_session_id = getattr(message, 'session_id', None)
                     print(f"[Agent Stream] #{message_count} {msg_type}: session_id={agent_session_id}")
                 else:
@@ -915,18 +961,79 @@ async def run_agent_stream(
     finally:
         set_current_session(None)
 
-    # Save session state
+    # --------------------------------------------------------------------------
+    # Automatic retry when agent produced 0 slides (clarification loop guard)
+    # --------------------------------------------------------------------------
+    slide_count = len(session.presentation.slides) if session.presentation else 0
+
+    if slide_count == 0 and not is_continuation and agent_session_id:
+        logger.warning(
+            f"Agent produced 0 slides on first run — retrying as continuation. "
+            f"agent_session_id={agent_session_id}"
+        )
+        yield {"type": "status", "message": "Retrying slide creation..."}
+
+        retry_text = (
+            "You have not created any slides yet. This is not acceptable.\n\n"
+            "Follow the MANDATORY workflow RIGHT NOW — no questions, no clarification:\n"
+            "1. Call create_presentation with a title derived from the user's topic\n"
+            "2. Call add_slide at least twice with complete HTML slide content\n"
+            "3. Call commit_edits to save everything\n\n"
+            f"The user's original request was:\n{raw_instructions}"
+        )
+
+        retry_options = _create_agent_options(
+            session, is_continuation=True, resume_session_id=agent_session_id
+        )
+        set_current_session(session)
+
+        try:
+            async with ClaudeSDKClient(options=retry_options) as retry_client:
+                print(f"[Agent Stream] Retry: sending explicit slide-creation prompt")
+                await retry_client.query(_simple_prompt(retry_text))
+
+                async for message in retry_client.receive_response():
+                    message_count += 1
+                    msg_type = type(message).__name__
+
+                    if isinstance(message, AssistantMessage):
+                        for block in message.content:
+                            if isinstance(block, TextBlock):
+                                result_text = block.text
+                                preview = result_text[:200].replace('\n', ' ')
+                                print(f"[Agent Stream] Retry #{message_count} {msg_type}: {preview}...")
+                            else:
+                                block_type = type(block).__name__
+                                print(f"[Agent Stream] Retry #{message_count} {msg_type}/{block_type}")
+                    elif ResultMessage and isinstance(message, ResultMessage):
+                        agent_session_id = getattr(message, 'session_id', None)
+                        print(f"[Agent Stream] Retry #{message_count} {msg_type}: session_id={agent_session_id}")
+                    else:
+                        print(f"[Agent Stream] Retry #{message_count} {msg_type}")
+
+                    yield _serialize_message(message)
+
+        except Exception as e:
+            print(f"[Agent Stream] Retry error: {e}")
+            import traceback
+            traceback.print_exc()
+            yield {"type": "error", "error": f"Retry agent error: {str(e)}"}
+
+        finally:
+            set_current_session(None)
+
+    # Save final session state
     session.claude_session_id = agent_session_id
     session_manager.save_session(session)
 
-    # Check if slides were created
     slide_count = len(session.presentation.slides) if session.presentation else 0
     if slide_count == 0:
-        logger.warning(f"Agent completed but created 0 slides. "
-                      f"Presentation: {session.presentation is not None}, "
-                      f"Pending edits: {len(session.pending_edits)}")
+        logger.warning(
+            f"Agent completed with 0 slides after retry. "
+            f"Presentation: {session.presentation is not None}, "
+            f"Pending edits: {len(session.pending_edits)}"
+        )
 
-    # Yield final summary
     yield {
         "type": "complete",
         "success": True,
