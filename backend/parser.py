@@ -8,6 +8,11 @@ to extract text content for presentation context.
 import os
 import logging
 from typing import AsyncGenerator
+from pathlib import Path
+
+# Temporary files directory - use .tmp in project root
+TMP_DIR = Path(__file__).parent.parent / ".tmp"
+TMP_DIR.mkdir(parents=True, exist_ok=True)
 
 # Apply nest_asyncio to allow nested event loops (needed for LlamaParse)
 try:
@@ -117,18 +122,20 @@ async def parse_with_llama(
         parsing_instruction="Extract all text content for use in presentation slides."
     )
 
-    # Write to temp file
-    import tempfile
-    with tempfile.NamedTemporaryFile(delete=False, suffix=f"_{filename}") as f:
+    # Write to temp file in .tmp directory
+    import uuid
+    temp_id = uuid.uuid4().hex[:8]
+    temp_path = TMP_DIR / f"parse_{temp_id}_{filename}"
+
+    with open(temp_path, 'wb') as f:
         f.write(content)
-        temp_path = f.name
 
     try:
-        documents = await parser.aload_data(temp_path)
+        documents = await parser.aload_data(str(temp_path))
         return "\n\n".join(doc.text for doc in documents)
     finally:
-        import os
-        os.unlink(temp_path)
+        if temp_path.exists():
+            temp_path.unlink()
 
 
 def parse_basic(content: bytes, filename: str, content_type: str) -> str:
@@ -194,14 +201,17 @@ async def parse_template_with_screenshots(
             take_screenshot=True,
         )
 
-        # Write to temp file
-        with tempfile.NamedTemporaryFile(delete=False, suffix=f"_{filename}") as f:
+        # Write to temp file in .tmp directory
+        import uuid
+        temp_id = uuid.uuid4().hex[:8]
+        temp_path = TMP_DIR / f"template_{temp_id}_{filename}"
+
+        with open(temp_path, 'wb') as f:
             f.write(content)
-            temp_path = f.name
 
         try:
             # Parse document - use aparse to get JobResult object
-            result = await parser.aparse(temp_path)
+            result = await parser.aparse(str(temp_path))
 
             # Get text content from markdown documents
             markdown_docs = result.get_markdown_documents(split_by_page=False)
@@ -211,8 +221,8 @@ async def parse_template_with_screenshots(
             screenshots = []
 
             # Create a debug directory to save screenshots
-            debug_dir = "/tmp/template_screenshots"
-            os.makedirs(debug_dir, exist_ok=True)
+            debug_dir = TMP_DIR / "template_screenshots"
+            debug_dir.mkdir(parents=True, exist_ok=True)
             logger.info(f"Saving debug screenshots to: {debug_dir}")
 
             # Pattern to match full page screenshots: page_N.jpg (1-indexed)
@@ -300,7 +310,8 @@ async def parse_template_with_screenshots(
             }
 
         finally:
-            os.unlink(temp_path)
+            if temp_path.exists():
+                temp_path.unlink()
 
     except Exception as e:
         logger.error(f"Error parsing template {filename}: {e}")
