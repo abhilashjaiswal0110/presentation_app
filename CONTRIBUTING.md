@@ -22,7 +22,7 @@ This project adheres to a Code of Conduct that all contributors are expected to 
 
 ### Prerequisites
 
-- Python 3.10 or higher
+- Python 3.12 or higher
 - Node.js 18.x or higher
 - Git
 - Basic knowledge of FastAPI and Next.js
@@ -69,7 +69,7 @@ cp .env.example .env
 # Edit .env with your API keys
 
 # Run backend
-uvicorn main:app --reload
+python main.py
 ```
 
 ### Frontend Development
@@ -343,15 +343,30 @@ We use [Conventional Commits](https://www.conventionalcommits.org/):
 - `style`: Code style changes (formatting, no logic change)
 - `refactor`: Code refactoring
 - `test`: Adding or updating tests
-- `chore`: Maintenance tasks
+- `chore`: Maintenance tasks (dependencies, tooling, cleanup)
 - `perf`: Performance improvements
+
+**Scopes** (common):
+- `backend`: Python FastAPI server, agent, models, session
+- `frontend`: Next.js app, components, API client
+- `agent`: MCP tool definitions or system prompts
+- `export`: PPTX/PDF export via Node.js converter
+- `parser`: Document/template parsing
+- `deps`: Dependency updates
+- `docs`: Documentation
+
+**Commit Message Rules**:
+- Subject line: imperative, lowercase, no trailing period, max 72 chars
+- Body: explain *what* changed and *why*, not how
+- Do **not** mention AI assistant tools, code generation tools, or LLM tooling in commit messages — commits describe the code change, not the tooling used to produce it
+- One logical change per commit — separate unrelated changes into separate commits
 
 **Examples**:
 ```
 feat(agent): add support for custom slide layouts
 
 Add ability to define and use custom slide layouts through
-the agent tool interface. Includes validation and error handling.
+the MCP tool interface. Includes validation and error handling.
 
 Closes #123
 ```
@@ -359,10 +374,18 @@ Closes #123
 ```
 fix(export): resolve PPTX generation error on Windows
 
-The subprocess call was failing on Windows due to path issues.
-Updated to use pathlib for cross-platform compatibility.
+The subprocess call was failing on Windows due to path separator issues.
+Updated to use pathlib for cross-platform path construction.
 
 Fixes #456
+```
+
+```
+fix(deps): bump mcp to 1.26.0 and add python-dotenv
+
+Newer mcp version resolves a compatibility issue with the Agent SDK.
+python-dotenv is now a runtime dependency since main.py loads .env
+on startup instead of relying on the caller to set environment variables.
 ```
 
 ## Testing Guidelines
