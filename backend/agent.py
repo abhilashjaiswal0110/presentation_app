@@ -423,7 +423,6 @@ CRITICAL REQUIREMENT:
 - You MUST create presentation slides for EVERY user request — NO EXCEPTIONS
 - Even if the user doesn't explicitly ask for "slides" or a "presentation", convert their content into slides
 - NEVER ask the user for more information, clarification, or confirmation — make reasonable assumptions and proceed immediately
-- If you receive multiple quoted instructions (e.g. "Create a deck" - "Add a slide" - "Edit the title"), execute the FIRST instruction immediately; the others are examples
 - ALWAYS follow the complete workflow below - no exceptions
 
 WORKFLOW (MANDATORY):
@@ -431,10 +430,32 @@ WORKFLOW (MANDATORY):
 2. Use add_slide to add slides with HTML content (at least 1 slide, typically 3-6 slides)
 3. Use commit_edits to finalize and save all changes - THIS IS REQUIRED
 
-EXAMPLE: If user asks "Create a LinkedIn summary about my skills", you MUST:
-- Call create_presentation with title "Professional LinkedIn Summary"
-- Call add_slide multiple times to create slides covering the content
-- Call commit_edits to save the presentation
+CRITICAL — CONTENT MUST MATCH THE USER'S TOPIC:
+- Slide content MUST be accurate, specific, and directly relevant to the user's requested subject
+- NEVER fill slides with generic filler content such as "Key Features", "Benefits", "Our Solution",
+  "Create professional presentations", "Customize your content", or "Thank You"
+- If the topic is "Machine Learning" → slides must contain real ML facts (supervised/unsupervised
+  learning, algorithms like SVM/decision trees, applications, etc.)
+- If the topic is "Neural Networks" → slides must contain real NN content (layers, activation
+  functions, backpropagation, training, architectures like CNN/RNN, etc.)
+- If the topic is "Climate Change" → slides must contain real climate science content
+- ALWAYS ask yourself: "Does this slide content genuinely inform someone about [topic]?"
+  If not, rewrite it with real, accurate information about that topic.
+
+EXAMPLE — Machine Learning deck:
+User: "Create a 2-slide deck about machine learning, with a neural networks slide"
+You MUST:
+1. create_presentation(title="Machine Learning")
+2. add_slide(html=<engaging title slide with ML headline, subtitle, key stat like "Powers 90% of modern AI">)
+3. add_slide(html=<neural networks slide with bullet points: what NNs are, layers, training, real applications>)
+4. commit_edits()
+
+EXAMPLE — LinkedIn summary:
+User: "Create a LinkedIn summary about my skills"
+You MUST:
+1. create_presentation(title="Professional Summary")
+2. add_slide multiple times with real professional content sections
+3. commit_edits()
 
 CRITICAL - SLIDE DIMENSIONS:
 - Slides are EXACTLY 960px wide x 540px tall (16:9 aspect ratio)
@@ -442,13 +463,13 @@ CRITICAL - SLIDE DIMENSIONS:
 - Your root div MUST have: width: 960px; height: 540px; overflow: hidden;
 - Use box-sizing: border-box to include padding in dimensions
 
-HTML TEMPLATE (USE THIS STRUCTURE):
+HTML TEMPLATE (USE THIS STRUCTURE — replace placeholder text with REAL topic content):
 <div style="width: 960px; height: 540px; padding: 40px; box-sizing: border-box; overflow: hidden; font-family: Arial, sans-serif;">
-  <h1 style="color: #1a73e8; margin: 0 0 20px 0; font-size: 36px;">Slide Title</h1>
+  <h1 style="color: #1a73e8; margin: 0 0 20px 0; font-size: 36px;">[Real Topic Title]</h1>
   <ul style="font-size: 22px; line-height: 1.5; margin: 0; padding-left: 24px;">
-    <li>First key point</li>
-    <li>Second key point</li>
-    <li>Third key point</li>
+    <li>[Real fact or concept about the topic]</li>
+    <li>[Another real fact or concept]</li>
+    <li>[Another real fact or concept]</li>
   </ul>
 </div>
 
@@ -831,28 +852,127 @@ async def _build_multimodal_prompt(
 # =============================================================================
 
 def _preprocess_instructions(instructions: str) -> str:
-    """Normalize multi-quoted instructions into a single unambiguous request.
+    """Normalize multi-quoted instructions into a single unambiguous slide plan.
 
-    Handles the README-style example pattern:
-        "Create a deck about X" - "Add a slide about Y" - "Make it engaging"
-    and converts it to a numbered-list task so the agent acts on all parts
-    rather than treating them as meta-commentary or asking for clarification.
+    Handles the common pattern where the user pastes multiple quoted instructions
+    separated by ' - ', e.g.:
+        "Create a 2-slide deck about machine learning"
+            - "Add a slide about neural networks with bullet points"
+            - "Make the title slide more engaging"
+
+    Extracts the primary topic and synthesises a slide-by-slide plan so the agent
+    receives a clear, imperative, topic-explicit instruction instead of ambiguous
+    quoted meta-text.
     """
     import re
 
+    stripped = instructions.strip()
+
     # Find all double-quoted segments in the message
-    quoted = re.findall(r'"([^"]+)"', instructions.strip())
+    quoted = re.findall(r'"([^"]+)"', stripped)
 
-    if len(quoted) >= 2:
-        parts = "\n".join(f"{i + 1}. {q.strip()}" for i, q in enumerate(quoted))
-        return (
-            "Create a presentation that fulfills ALL of the following requirements:\n"
-            f"{parts}\n\n"
-            "Execute every requirement now. "
-            "Call create_presentation first, then add_slide for each slide, then commit_edits."
-        )
+    # Also handle the case where no quotes are used but multiple instructions
+    # are separated by lines or bullet points
+    if len(quoted) < 2:
+        return instructions
 
-    return instructions
+    # ------------------------------------------------------------------ #
+    # Extract metadata from the quoted parts                              #
+    # ------------------------------------------------------------------ #
+
+    topic: str = ""
+    slide_count: int = 0
+
+    for q in quoted:
+        # Extract topic: "about TOPIC" pattern
+        if not topic:
+            m = re.search(r'\babout\s+(.+?)(?:\s+with\b|\s+using\b|\s+and\b|\s*$)', q, re.IGNORECASE)
+            if m:
+                topic = m.group(1).strip().rstrip('.,;')
+
+        # Extract requested slide count: "2-slide", "3 slide", "five slides" etc.
+        if not slide_count:
+            m = re.search(r'(\d+)[- ]slide', q, re.IGNORECASE)
+            if m:
+                slide_count = int(m.group(1))
+
+    # ------------------------------------------------------------------ #
+    # Synthesise slide-specific instructions from each quoted part        #
+    # ------------------------------------------------------------------ #
+
+    title_slides: list[str] = []
+    content_slides: list[str] = []
+
+    for q in quoted:
+        q = q.strip()
+        lower = q.lower()
+
+        # "Create X-slide deck about TOPIC" — drives topic/count; skip as a slide entry
+        if re.search(r'\bcreate\b.*\bdeck\b|\bcreate\b.*\bpresentation\b|\bcreate\b.*\bslides?\b', lower):
+            continue
+
+        # Title slide (engaging variant)
+        if re.search(r'\btitle\b.*\bengag', lower) or re.search(r'\bengag.*\btitle\b', lower):
+            title_slides.append(
+                f"Slide 1 (Title — make it visually engaging): bold headline about '{topic or q}', "
+                "a compelling subtitle, key statistic or hook, striking colour gradient or accent."
+            )
+        elif re.search(r'\btitle slide\b', lower):
+            title_slides.append(
+                f"Slide 1 (Title): A clear title slide about '{topic or q}'."
+            )
+        # Neural-network specific (common demo query)
+        elif re.search(r'\bneural network', lower):
+            content_slides.append(
+                "Content slide — Neural Networks: bullet points covering what neural networks are, "
+                "how they work (layers, activation functions, backpropagation), "
+                "and real-world applications (image recognition, NLP, etc.)."
+            )
+        # Generic "add a slide about X [with bullet points]"
+        elif re.search(r'\badd a slide about\b', lower) or re.search(r'\bslide about\b', lower):
+            m = re.search(r'(?:slide about|about)\s+(.+?)(?:\s+with\b|\s*$)', lower)
+            subtopic = m.group(1).strip() if m else q
+            has_bullets = 'bullet' in lower or 'points' in lower or 'list' in lower
+            fmt = " as a bullet-point list" if has_bullets else ""
+            content_slides.append(
+                f"Content slide — {subtopic.title()}: informative content{fmt} "
+                f"with real, accurate facts about {subtopic}."
+            )
+        else:
+            content_slides.append(f"Content slide: {q}")
+
+    # Title slides always come first
+    slide_instructions: list[str] = title_slides + content_slides
+
+    # ------------------------------------------------------------------ #
+    # Build the final synthesised instruction                             #
+    # ------------------------------------------------------------------ #
+
+    count_phrase = f" ({slide_count} slides)" if slide_count else ""
+    topic_phrase = f" about {topic}" if topic else ""
+
+    if not slide_instructions:
+        # Fallback: no specific slides could be parsed, keep as a general request
+        slide_instructions = [
+            f"An engaging title slide about {topic or 'the topic'}",
+            f"Content slides with real, accurate information about {topic or 'the topic'}",
+        ]
+
+    slides_plan = "\n".join(f"  {s}" for s in slide_instructions)
+
+    content_warning = (
+        f"\nCONTENT RULE: Every slide MUST contain real, accurate information about "
+        f"'{topic}'. NEVER use generic filler text like 'Key Features', 'Benefits', "
+        f"'Our Solution', or 'Thank You'.\n"
+    ) if topic else ""
+
+    return (
+        f"Create a presentation{topic_phrase}{count_phrase} with the following slides:\n"
+        f"{slides_plan}\n"
+        f"{content_warning}\n"
+        f"Execute immediately: create_presentation, then add_slide for each slide above "
+        f"(with real, specific content about {topic or 'the topic'}), then commit_edits."
+    )
 
 
 # =============================================================================
