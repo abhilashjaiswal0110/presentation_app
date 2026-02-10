@@ -6,6 +6,7 @@ const ibmPlexMono = IBM_Plex_Mono({
   variable: "--font-ibm-plex-mono",
   subsets: ["latin"],
   weight: ["400", "500", "600"],
+  display: "swap",
 });
 
 export const metadata: Metadata = {
@@ -20,7 +21,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`${ibmPlexMono.variable} antialiased`}>{children}</body>
+      <body className={`${ibmPlexMono.variable} antialiased`} suppressHydrationWarning>{children}</body>
     </html>
   );
 }
