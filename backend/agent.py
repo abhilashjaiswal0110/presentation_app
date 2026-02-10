@@ -420,8 +420,10 @@ TOOL_MAP = {func._tool_name: func for func in PRESENTATION_TOOLS if hasattr(func
 SYSTEM_PROMPT_NEW = """You are a presentation creation assistant. Your job is to ALWAYS convert user requests into professional presentation slides.
 
 CRITICAL REQUIREMENT:
-- You MUST create presentation slides for EVERY user request
+- You MUST create presentation slides for EVERY user request — NO EXCEPTIONS
 - Even if the user doesn't explicitly ask for "slides" or a "presentation", convert their content into slides
+- NEVER ask the user for more information, clarification, or confirmation — make reasonable assumptions and proceed immediately
+- If you receive multiple quoted instructions in one message (e.g. "Create a 2-slide deck..." - "Add a slide about neural networks" - "Make the title slide engaging"), treat each quoted segment as a separate actionable instruction or additional constraint and execute them in order, while STILL not asking the user any clarification questions
 - ALWAYS follow the complete workflow below - no exceptions
 
 WORKFLOW (MANDATORY):
@@ -429,10 +431,32 @@ WORKFLOW (MANDATORY):
 2. Use add_slide to add slides with HTML content (at least 1 slide, typically 3-6 slides)
 3. Use commit_edits to finalize and save all changes - THIS IS REQUIRED
 
-EXAMPLE: If user asks "Create a LinkedIn summary about my skills", you MUST:
-- Call create_presentation with title "Professional LinkedIn Summary"
-- Call add_slide multiple times to create slides covering the content
-- Call commit_edits to save the presentation
+CRITICAL — CONTENT MUST MATCH THE USER'S TOPIC:
+- Slide content MUST be accurate, specific, and directly relevant to the user's requested subject
+- NEVER fill slides with generic filler content such as "Key Features", "Benefits", "Our Solution",
+  "Create professional presentations", "Customize your content", or "Thank You"
+- If the topic is "Machine Learning" → slides must contain real ML facts (supervised/unsupervised
+  learning, algorithms like SVM/decision trees, applications, etc.)
+- If the topic is "Neural Networks" → slides must contain real NN content (layers, activation
+  functions, backpropagation, training, architectures like CNN/RNN, etc.)
+- If the topic is "Climate Change" → slides must contain real climate science content
+- ALWAYS ask yourself: "Does this slide content genuinely inform someone about [topic]?"
+  If not, rewrite it with real, accurate information about that topic.
+
+EXAMPLE — Machine Learning deck:
+User: "Create a 2-slide deck about machine learning, with a neural networks slide"
+You MUST:
+1. create_presentation(title="Machine Learning")
+2. add_slide(html=<engaging title slide with ML headline, subtitle, key stat like "Powers 90% of modern AI">)
+3. add_slide(html=<neural networks slide with bullet points: what NNs are, layers, training, real applications>)
+4. commit_edits()
+
+EXAMPLE — LinkedIn summary:
+User: "Create a LinkedIn summary about my skills"
+You MUST:
+1. create_presentation(title="Professional Summary")
+2. add_slide multiple times with real professional content sections
+3. commit_edits()
 
 CRITICAL - SLIDE DIMENSIONS:
 - Slides are EXACTLY 960px wide x 540px tall (16:9 aspect ratio)
@@ -440,13 +464,13 @@ CRITICAL - SLIDE DIMENSIONS:
 - Your root div MUST have: width: 960px; height: 540px; overflow: hidden;
 - Use box-sizing: border-box to include padding in dimensions
 
-HTML TEMPLATE (USE THIS STRUCTURE):
+HTML TEMPLATE (USE THIS STRUCTURE — replace placeholder text with REAL topic content):
 <div style="width: 960px; height: 540px; padding: 40px; box-sizing: border-box; overflow: hidden; font-family: Arial, sans-serif;">
-  <h1 style="color: #1a73e8; margin: 0 0 20px 0; font-size: 36px;">Slide Title</h1>
+  <h1 style="color: #1a73e8; margin: 0 0 20px 0; font-size: 36px;">[Real Topic Title]</h1>
   <ul style="font-size: 22px; line-height: 1.5; margin: 0; padding-left: 24px;">
-    <li>First key point</li>
-    <li>Second key point</li>
-    <li>Third key point</li>
+    <li>[Real fact or concept about the topic]</li>
+    <li>[Another real fact or concept]</li>
+    <li>[Another real fact or concept]</li>
   </ul>
 </div>
 
@@ -825,8 +849,206 @@ async def _build_multimodal_prompt(
 
 
 # =============================================================================
+# INPUT PRE-PROCESSING
+# =============================================================================
+
+def _preprocess_instructions(instructions: str) -> str:
+    """Normalize instructions containing multiple quoted segments into a single
+    unambiguous slide plan.
+
+    Handles the common pattern where the user pastes several double-quoted
+    instructions separated by delimiters such as " - ", e.g.:
+        "Create a 2-slide deck about machine learning"
+            - "Add a slide about neural networks with bullet points"
+            - "Make the title slide more engaging"
+
+    When at least two quoted segments are present, extracts the primary topic
+    and synthesises a slide-by-slide plan so the agent receives clear,
+    imperative, topic-explicit instructions instead of ambiguous quoted
+    meta-text. If fewer than two quoted segments are found, returns the
+    original instructions unchanged.
+    """
+    import re
+
+    stripped = instructions.strip()
+
+    # Find all double-quoted segments in the message
+    quoted = re.findall(r'"([^"]+)"', stripped)
+
+    # Only preprocess when the message matches the intended "multi-quoted list"
+    # pattern, e.g.:
+    #   "Create a 2-slide deck about ML"
+    #       - "Add a slide about neural networks"
+    #       - "Make the title slide more engaging"
+    # or:
+    #   "Do X" - "Then do Y" - "Finally do Z"
+    #
+    # If the text just happens to contain multiple quoted phrases (e.g. "AI"
+    # and "ML" in a single sentence) without this structure, we should not
+    # rewrite it.
+    list_pattern = re.compile(
+        r'"[^"]+"\\s*'
+        r'(?:'
+        r'(?:\\r?\\n\\s*[-*]\\s*"[^"]+")'   # newline + bullet + quoted text
+        r'|'
+        r'(?:\\s+-\\s*"[^"]+")'          # inline " - " quoted text
+        r')+',
+        re.MULTILINE,
+    )
+    if not list_pattern.search(stripped):
+        return instructions
+
+    # ------------------------------------------------------------------ #
+    # Extract metadata from the quoted parts                              #
+    # ------------------------------------------------------------------ #
+
+    topic: str = ""
+    slide_count: int = 0
+
+    for q in quoted:
+        # Extract topic: "about TOPIC" pattern
+        if not topic:
+            m = re.search(r'\babout\s+(.+?)(?:\s+with\b|\s+using\b|\s+and\b|\s*$)', q, re.IGNORECASE)
+            if m:
+                topic = m.group(1).strip().rstrip('.,;')
+
+        # Extract requested slide count: "2-slide", "3 slide" etc.
+        # Note: Currently only supports numeric digits, not spelled-out numbers
+        if not slide_count:
+            m = re.search(r'(\d+)[- ]slide', q, re.IGNORECASE)
+            if m:
+                slide_count = int(m.group(1))
+
+    # ------------------------------------------------------------------ #
+    # Synthesise slide-specific instructions from each quoted part        #
+    # ------------------------------------------------------------------ #
+
+    title_slides: list[str] = []
+    content_slides: list[str] = []
+    seeded_from_create = False
+
+    for q in quoted:
+        q = q.strip()
+        lower = q.lower()
+
+        # "Create X-slide deck about TOPIC" — drives topic/count; also seed default slides if needed
+        if re.search(r'\bcreate\b.*\bdeck\b|\bcreate\b.*\bpresentation\b|\bcreate\b.*\bslides?\b', lower):
+            if slide_count and not seeded_from_create:
+                # Use the parsed topic if available; otherwise fall back to this quote text
+                topic_for_defaults = topic or q
+
+                # Ensure we have at least a title slide
+                if not title_slides:
+                    title_slides.append(
+                        f"Slide 1 (Title): A clear title slide about '{topic_for_defaults}'."
+                    )
+
+                # Pad with generic content slides up to the requested slide_count
+                total_existing = len(title_slides) + len(content_slides)
+                remaining = slide_count - total_existing
+                for i in range(max(0, remaining)):
+                    slide_index = len(title_slides) + len(content_slides) + 1
+                    content_slides.append(
+                        f"Content slide — Key point {i + 1} about {topic_for_defaults} (Slide {slide_index})."
+                    )
+
+                seeded_from_create = True
+
+            # Do not treat this high-level instruction as a separate content slide
+            continue
+
+        # Title slide (engaging variant)
+        if re.search(r'\btitle\b.*\bengag', lower) or re.search(r'\bengag.*\btitle\b', lower):
+            title_slides.append(
+                f"Slide 1 (Title — make it visually engaging): bold headline about '{topic or q}', "
+                "a compelling subtitle, key statistic or hook, striking colour gradient or accent."
+            )
+        elif re.search(r'\btitle slide\b', lower):
+            title_slides.append(
+                f"Slide 1 (Title): A clear title slide about '{topic or q}'."
+            )
+        # Neural-network specific (common demo query)
+        elif re.search(r'\bneural network', lower):
+            content_slides.append(
+                "Content slide — Neural Networks: bullet points covering what neural networks are, "
+                "how they work (layers, activation functions, backpropagation), "
+                "and real-world applications (image recognition, NLP, etc.)."
+            )
+        # Generic "add a slide about X [with bullet points]"
+        elif re.search(r'\badd a slide about\b', lower) or re.search(r'\bslide about\b', lower):
+            m = re.search(r'(?:slide about|about)\s+(.+?)(?:\s+with\b|\s*$)', lower)
+            subtopic = m.group(1).strip() if m else q
+            has_bullets = 'bullet' in lower or 'points' in lower or 'list' in lower
+            fmt = " as a bullet-point list" if has_bullets else ""
+            content_slides.append(
+                f"Content slide — {subtopic.title()}: informative content{fmt} "
+                f"with real, accurate facts about {subtopic}."
+            )
+        else:
+            content_slides.append(f"Content slide: {q}")
+
+    # Title slides always come first
+    slide_instructions: list[str] = title_slides + content_slides
+
+    # Ensure slide_instructions matches the requested slide_count (if specified)
+    if slide_count and len(slide_instructions) != slide_count:
+        if len(slide_instructions) < slide_count:
+            # Pad with additional content slides
+            topic_for_padding = topic or "the topic"
+            for i in range(len(slide_instructions), slide_count):
+                slide_instructions.append(
+                    f"Content slide — Additional point {i} about {topic_for_padding} (Slide {i + 1})."
+                )
+        else:
+            # Trim to the requested count
+            slide_instructions = slide_instructions[:slide_count]
+
+    # ------------------------------------------------------------------ #
+    # Build the final synthesised instruction                             #
+    # ------------------------------------------------------------------ #
+
+    count_phrase = f" ({slide_count} slides)" if slide_count else ""
+    topic_phrase = f" about {topic}" if topic else ""
+
+    if not slide_instructions:
+        # Fallback: no specific slides could be parsed, keep as a general request
+        slide_instructions = [
+            f"An engaging title slide about {topic or 'the topic'}",
+            f"Content slides with real, accurate information about {topic or 'the topic'}",
+        ]
+
+    slides_plan = "\n".join(f"  {s}" for s in slide_instructions)
+
+    content_warning = (
+        f"\nCONTENT RULE: Every slide MUST contain real, accurate information about "
+        f"'{topic}'. NEVER use generic filler text like 'Key Features', 'Benefits', "
+        f"'Our Solution', or 'Thank You'.\n"
+    ) if topic else ""
+
+    return (
+        f"Create a presentation{topic_phrase}{count_phrase} with the following slides:\n"
+        f"{slides_plan}\n"
+        f"{content_warning}\n"
+        f"Execute immediately: create_presentation, then add_slide for each slide above "
+        f"(with real, specific content about {topic or 'the topic'}), then commit_edits."
+    )
+
+
+# =============================================================================
 # AGENT STREAMING
 # =============================================================================
+
+async def _simple_prompt(text: str) -> AsyncGenerator[dict, None]:
+    """Yield a single plain-text user message in SDK wire format."""
+    yield {
+        "type": "user",
+        "message": {
+            "role": "user",
+            "content": [{"type": "text", "text": text}]
+        },
+        "parent_tool_use_id": None,
+    }
+
 
 async def run_agent_stream(
     instructions: str,
@@ -862,6 +1084,14 @@ async def run_agent_stream(
     if context_files:
         session.context_files = context_files
 
+    # Normalize multi-quoted or ambiguous instructions before sending to agent
+    raw_instructions = instructions
+    effective_instructions = (
+        instructions if is_continuation else _preprocess_instructions(instructions)
+    )
+    if effective_instructions != instructions:
+        print(f"[Agent Stream] Instructions pre-processed from multi-quoted format")
+
     set_current_session(session)
 
     yield {"type": "init", "message": "Starting agent...", "session_id": session.session_id}
@@ -877,14 +1107,12 @@ async def run_agent_stream(
             print(f"[Agent Stream] Connected, sending query...")
             yield {"type": "status", "message": "Agent connected, processing..."}
 
-            # Use multimodal prompt if style template has screenshots
-            await client.query(_build_multimodal_prompt(session, instructions))
+            await client.query(_build_multimodal_prompt(session, effective_instructions))
 
             async for message in client.receive_response():
                 message_count += 1
                 msg_type = type(message).__name__
 
-                # Log message
                 if isinstance(message, AssistantMessage):
                     for block in message.content:
                         if isinstance(block, TextBlock):
@@ -895,7 +1123,6 @@ async def run_agent_stream(
                             block_type = type(block).__name__
                             print(f"[Agent Stream] #{message_count} {msg_type}/{block_type}")
                 elif ResultMessage and isinstance(message, ResultMessage):
-                    # Extract session_id from ResultMessage for multi-turn support
                     agent_session_id = getattr(message, 'session_id', None)
                     print(f"[Agent Stream] #{message_count} {msg_type}: session_id={agent_session_id}")
                 else:
@@ -913,18 +1140,96 @@ async def run_agent_stream(
     finally:
         set_current_session(None)
 
-    # Save session state
+    # --------------------------------------------------------------------------
+    # Automatic retry when agent produced 0 slides (clarification loop guard)
+    # --------------------------------------------------------------------------
+    slide_count = len(session.presentation.slides) if session.presentation else 0
+    pending_edits_count = len(session.pending_edits) if hasattr(session, "pending_edits") else 0
+
+    if slide_count == 0 and pending_edits_count == 0 and not is_continuation and agent_session_id:
+        logger.warning(
+            f"Agent produced 0 slides on first run — retrying as continuation. "
+            f"agent_session_id={agent_session_id}"
+        )
+        yield {"type": "status", "message": "Retrying slide creation..."}
+
+        # Determine minimum required slides from the preprocessed instructions
+        # Extract any slide count mentioned in the original request
+        import re
+        slide_count_match = re.search(r'(\d+)[- ]slide', raw_instructions, re.IGNORECASE)
+        min_slides = int(slide_count_match.group(1)) if slide_count_match else 1
+        min_slides_phrase = f"at least {min_slides} time{'s' if min_slides > 1 else ''}" if min_slides > 1 else "at least once"
+
+        retry_text = (
+            "You have not created any slides yet. This is not acceptable.\n\n"
+            "Follow the MANDATORY workflow RIGHT NOW — no questions, no clarification:\n"
+            "1. Call create_presentation with a title derived from the user's topic\n"
+            f"2. Call add_slide {min_slides_phrase} with complete HTML slide content\n"
+            "3. Call commit_edits to save everything\n\n"
+            f"The user's original request was:\n{raw_instructions}"
+        )
+
+        retry_options = _create_agent_options(
+            session, is_continuation=True, resume_session_id=agent_session_id
+        )
+        set_current_session(session)
+
+        try:
+            async with ClaudeSDKClient(options=retry_options) as retry_client:
+                print(f"[Agent Stream] Retry: sending explicit slide-creation prompt")
+                await retry_client.query(_simple_prompt(retry_text))
+
+                async for message in retry_client.receive_response():
+                    message_count += 1
+                    msg_type = type(message).__name__
+
+                    if isinstance(message, AssistantMessage):
+                        for block in message.content:
+                            if isinstance(block, TextBlock):
+                                result_text = block.text
+                                preview = result_text[:200].replace('\n', ' ')
+                                print(f"[Agent Stream] Retry #{message_count} {msg_type}: {preview}...")
+                            else:
+                                block_type = type(block).__name__
+                                print(f"[Agent Stream] Retry #{message_count} {msg_type}/{block_type}")
+                    elif ResultMessage and isinstance(message, ResultMessage):
+                        agent_session_id = getattr(message, 'session_id', None)
+                        print(f"[Agent Stream] Retry #{message_count} {msg_type}: session_id={agent_session_id}")
+                    else:
+                        print(f"[Agent Stream] Retry #{message_count} {msg_type}")
+
+                    yield _serialize_message(message)
+
+        except Exception as e:
+            print(f"[Agent Stream] Retry error: {e}")
+            import traceback
+            traceback.print_exc()
+            yield {"type": "error", "error": f"Retry agent error: {str(e)}"}
+
+        finally:
+            set_current_session(None)
+
+    # Save final session state
     session.claude_session_id = agent_session_id
     session_manager.save_session(session)
 
-    # Check if slides were created
     slide_count = len(session.presentation.slides) if session.presentation else 0
     if slide_count == 0:
-        logger.warning(f"Agent completed but created 0 slides. "
-                      f"Presentation: {session.presentation is not None}, "
-                      f"Pending edits: {len(session.pending_edits)}")
+        logger.error(
+            f"Agent completed with 0 slides after retry. "
+            f"Presentation: {session.presentation is not None}, "
+            f"Pending edits: {len(session.pending_edits)}"
+        )
+        # Emit error event to signal failure to the frontend
+        yield {
+            "type": "error",
+            "error": "Agent failed to create any slides. Please try again with a more specific request.",
+            "message_count": message_count,
+            "session_id": agent_session_id,
+            "user_session_id": session.session_id
+        }
+        return
 
-    # Yield final summary
     yield {
         "type": "complete",
         "success": True,
