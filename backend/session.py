@@ -70,7 +70,7 @@ class PresentationSession:
             "is_continuation": self.is_continuation,
             "claude_session_id": self.claude_session_id,
             "created_at": self.created_at.isoformat(),
-            "updated_at": self.updated_at.isoformat()
+            "updated_at": self.updated_at.isoformat(),
         }
 
     @classmethod
@@ -114,8 +114,7 @@ class SessionManager:
             conn.commit()
 
     def get_or_create_session(
-        self,
-        session_id: Optional[str] = None
+        self, session_id: Optional[str] = None
     ) -> PresentationSession:
         """Get existing session or create new one."""
         with self._lock:
@@ -160,7 +159,7 @@ class SessionManager:
         session_dir.mkdir(exist_ok=True)
 
         data_path = session_dir / "session.json"
-        with open(data_path, 'w') as f:
+        with open(data_path, "w") as f:
             json.dump(session.to_dict(), f, indent=2)
 
     def _load_from_disk(self, session_id: str) -> Optional[PresentationSession]:
@@ -170,7 +169,7 @@ class SessionManager:
             return None
 
         try:
-            with open(data_path, 'r') as f:
+            with open(data_path, "r") as f:
                 data = json.load(f)
             return PresentationSession.from_dict(data)
         except Exception as e:
@@ -180,16 +179,19 @@ class SessionManager:
     def _save_to_db(self, session: PresentationSession):
         """Save session metadata to SQLite."""
         with sqlite3.connect(DB_PATH) as conn:
-            conn.execute("""
+            conn.execute(
+                """
                 INSERT OR REPLACE INTO sessions
                 (session_id, created_at, updated_at, claude_session_id)
                 VALUES (?, ?, ?, ?)
-            """, (
-                session.session_id,
-                session.created_at.isoformat(),
-                session.updated_at.isoformat(),
-                session.claude_session_id
-            ))
+            """,
+                (
+                    session.session_id,
+                    session.created_at.isoformat(),
+                    session.updated_at.isoformat(),
+                    session.claude_session_id,
+                ),
+            )
             conn.commit()
 
     def cleanup_old_sessions(self, cutoff: datetime) -> int:
@@ -199,7 +201,7 @@ class SessionManager:
             with sqlite3.connect(DB_PATH) as conn:
                 cursor = conn.execute(
                     "SELECT session_id FROM sessions WHERE updated_at < ?",
-                    (cutoff.isoformat(),)
+                    (cutoff.isoformat(),),
                 )
                 old_sessions = [row[0] for row in cursor.fetchall()]
 
@@ -211,13 +213,13 @@ class SessionManager:
                 session_dir = SESSIONS_DIR / session_id
                 if session_dir.exists():
                     import shutil
+
                     shutil.rmtree(session_dir)
 
                 # Remove from database
                 with sqlite3.connect(DB_PATH) as conn:
                     conn.execute(
-                        "DELETE FROM sessions WHERE session_id = ?",
-                        (session_id,)
+                        "DELETE FROM sessions WHERE session_id = ?", (session_id,)
                     )
                     conn.commit()
 

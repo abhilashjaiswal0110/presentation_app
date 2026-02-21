@@ -88,7 +88,7 @@ app = FastAPI(
     title="Presentation App API",
     description="AI-powered presentation generation API",
     version="1.0.0",
-    lifespan=lifespan
+    lifespan=lifespan,
 )
 
 # Configure CORS - use environment variable for production origins
@@ -130,12 +130,13 @@ async def validate_api_key(api_key: str = Form(...)):
     if not api_key.startswith("llx-"):
         raise HTTPException(
             status_code=400,
-            detail="Invalid API key format. LlamaCloud API keys start with 'llx-'"
+            detail="Invalid API key format. LlamaCloud API keys start with 'llx-'",
         )
 
     # Test the key by making a request to LlamaCloud API
     try:
         import httpx
+
         async with httpx.AsyncClient() as client:
             response = await client.get(
                 "https://api.cloud.llamaindex.ai/api/v1/projects",
@@ -146,17 +147,17 @@ async def validate_api_key(api_key: str = Form(...)):
             if response.status_code == 401:
                 raise HTTPException(
                     status_code=401,
-                    detail="Invalid API key. Please check your key and try again."
+                    detail="Invalid API key. Please check your key and try again.",
                 )
             elif response.status_code == 403:
                 raise HTTPException(
                     status_code=403,
-                    detail="API key does not have permission to access LlamaCloud."
+                    detail="API key does not have permission to access LlamaCloud.",
                 )
             elif response.status_code >= 400:
                 raise HTTPException(
                     status_code=response.status_code,
-                    detail=f"LlamaCloud API error: {response.status_code}"
+                    detail=f"LlamaCloud API error: {response.status_code}",
                 )
 
             return {"valid": True, "message": "API key is valid"}
@@ -164,12 +165,11 @@ async def validate_api_key(api_key: str = Form(...)):
     except httpx.TimeoutException:
         raise HTTPException(
             status_code=504,
-            detail="Timeout while validating API key. Please try again."
+            detail="Timeout while validating API key. Please try again.",
         )
     except httpx.RequestError as e:
         raise HTTPException(
-            status_code=500,
-            detail=f"Failed to connect to LlamaCloud: {str(e)}"
+            status_code=500, detail=f"Failed to connect to LlamaCloud: {str(e)}"
         )
 
 
@@ -188,34 +188,33 @@ async def validate_anthropic_key(request: dict):
     if not api_key.startswith("sk-ant-"):
         raise HTTPException(
             status_code=400,
-            detail="Invalid API key format. Anthropic API keys start with 'sk-ant-'"
+            detail="Invalid API key format. Anthropic API keys start with 'sk-ant-'",
         )
 
     # Test the key by making a minimal API call
     try:
         import anthropic
+
         client = anthropic.Anthropic(api_key=api_key)
         # Make a minimal API call to validate the key
         client.messages.create(
             model="claude-3-haiku-20240307",
             max_tokens=1,
-            messages=[{"role": "user", "content": "Hi"}]
+            messages=[{"role": "user", "content": "Hi"}],
         )
         return {"valid": True, "message": "API key is valid"}
     except anthropic.AuthenticationError:
         raise HTTPException(
             status_code=401,
-            detail="Invalid API key. Please check your key and try again."
+            detail="Invalid API key. Please check your key and try again.",
         )
     except anthropic.PermissionDeniedError:
         raise HTTPException(
-            status_code=403,
-            detail="API key does not have permission to access Claude."
+            status_code=403, detail="API key does not have permission to access Claude."
         )
     except Exception as e:
         raise HTTPException(
-            status_code=500,
-            detail=f"Failed to validate API key: {str(e)}"
+            status_code=500, detail=f"Failed to validate API key: {str(e)}"
         )
 
 
@@ -268,7 +267,7 @@ async def agent_stream(
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
-        }
+        },
     )
 
 
@@ -283,7 +282,9 @@ async def get_session(session_id: str):
 
     return {
         "session_id": session.session_id,
-        "presentation": session.presentation.to_dict() if session.presentation else None,
+        "presentation": (
+            session.presentation.to_dict() if session.presentation else None
+        ),
         "pending_edits": [e.to_dict() for e in session.pending_edits],
         "is_continuation": session.is_continuation,
     }
@@ -301,9 +302,7 @@ async def get_slides(session_id: str):
     if not session.presentation:
         return {"slides": []}
 
-    return {
-        "slides": [slide.to_dict() for slide in session.presentation.slides]
-    }
+    return {"slides": [slide.to_dict() for slide in session.presentation.slides]}
 
 
 @app.patch("/session/{session_id}/slides/{slide_index}")
@@ -349,23 +348,20 @@ async def export_pptx(session_id: str):
     input_data = {
         "title": session.presentation.title,
         "slides": [
-            {
-                "html": slide.html,
-                "width": 960,
-                "height": 540
-            }
+            {"html": slide.html, "width": 960, "height": 540}
             for slide in session.presentation.slides
         ],
-        "theme": session.presentation.theme
+        "theme": session.presentation.theme,
     }
 
     # Create temp files in .tmp directory
     import uuid
+
     temp_id = uuid.uuid4().hex[:8]
     input_path = TMP_DIR / f"pptx_input_{temp_id}.json"
     output_path = TMP_DIR / f"pptx_output_{temp_id}.pptx"
 
-    with open(input_path, 'w') as f:
+    with open(input_path, "w") as f:
         json.dump(input_data, f)
 
     input_path = str(input_path)
@@ -373,13 +369,13 @@ async def export_pptx(session_id: str):
 
     try:
         # Run Node.js converter
-        converter_dir = os.path.join(os.path.dirname(__file__), 'pptx_converter')
+        converter_dir = os.path.join(os.path.dirname(__file__), "pptx_converter")
         result = subprocess.run(
-            ['node', 'convert.js', input_path, output_path],
+            ["node", "convert.js", input_path, output_path],
             cwd=converter_dir,
             capture_output=True,
             text=True,
-            timeout=30
+            timeout=30,
         )
 
         if result.returncode != 0:
@@ -387,19 +383,17 @@ async def export_pptx(session_id: str):
             raise HTTPException(status_code=500, detail="PPTX conversion failed")
 
         # Read output file
-        with open(output_path, 'rb') as f:
+        with open(output_path, "rb") as f:
             pptx_bytes = f.read()
 
         # Generate filename
         filename = f"{session.presentation.title or 'presentation'}.pptx"
-        filename = "".join(c for c in filename if c.isalnum() or c in ' -_.').strip()
+        filename = "".join(c for c in filename if c.isalnum() or c in " -_.").strip()
 
         return Response(
             content=pptx_bytes,
             media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
-            headers={
-                "Content-Disposition": f'attachment; filename="{filename}"'
-            }
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
         )
     finally:
         # Cleanup temp files
@@ -427,23 +421,20 @@ async def export_pdf(session_id: str):
     input_data = {
         "title": session.presentation.title,
         "slides": [
-            {
-                "html": slide.html,
-                "width": 960,
-                "height": 540
-            }
+            {"html": slide.html, "width": 960, "height": 540}
             for slide in session.presentation.slides
         ],
-        "theme": session.presentation.theme
+        "theme": session.presentation.theme,
     }
 
     # Create temp files in .tmp directory
     import uuid
+
     temp_id = uuid.uuid4().hex[:8]
     input_path = TMP_DIR / f"pdf_input_{temp_id}.json"
     output_path = TMP_DIR / f"pdf_output_{temp_id}.pdf"
 
-    with open(input_path, 'w') as f:
+    with open(input_path, "w") as f:
         json.dump(input_data, f)
 
     input_path = str(input_path)
@@ -451,33 +442,33 @@ async def export_pdf(session_id: str):
 
     try:
         # Run Node.js PDF converter
-        converter_dir = os.path.join(os.path.dirname(__file__), 'pptx_converter')
+        converter_dir = os.path.join(os.path.dirname(__file__), "pptx_converter")
         result = subprocess.run(
-            ['node', 'convert-pdf.js', input_path, output_path],
+            ["node", "convert-pdf.js", input_path, output_path],
             cwd=converter_dir,
             capture_output=True,
             text=True,
-            timeout=60  # PDF generation can take longer
+            timeout=60,  # PDF generation can take longer
         )
 
         if result.returncode != 0:
             logger.error(f"PDF conversion failed: {result.stderr}")
-            raise HTTPException(status_code=500, detail=f"PDF conversion failed: {result.stderr}")
+            raise HTTPException(
+                status_code=500, detail=f"PDF conversion failed: {result.stderr}"
+            )
 
         # Read output file
-        with open(output_path, 'rb') as f:
+        with open(output_path, "rb") as f:
             pdf_bytes = f.read()
 
         # Generate filename
         filename = f"{session.presentation.title or 'presentation'}.pdf"
-        filename = "".join(c for c in filename if c.isalnum() or c in ' -_.').strip()
+        filename = "".join(c for c in filename if c.isalnum() or c in " -_.").strip()
 
         return Response(
             content=pdf_bytes,
             media_type="application/pdf",
-            headers={
-                "Content-Disposition": f'attachment; filename="{filename}"'
-            }
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
         )
     finally:
         # Cleanup temp files
@@ -513,11 +504,13 @@ async def parse_files_endpoint(
             file_contents = []
             for file in files:
                 content = await file.read()
-                file_contents.append({
-                    "filename": file.filename,
-                    "content": content,
-                    "content_type": file.content_type
-                })
+                file_contents.append(
+                    {
+                        "filename": file.filename,
+                        "content": content,
+                        "content_type": file.content_type,
+                    }
+                )
 
             async for event in parse_files_stream(file_contents, parse_mode):
                 yield f"data: {json.dumps(event)}\n\n"
@@ -531,7 +524,7 @@ async def parse_files_endpoint(
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
-        }
+        },
     )
 
 
@@ -566,4 +559,5 @@ async def parse_template_endpoint(
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=8000)

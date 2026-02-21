@@ -17,8 +17,7 @@ logger = logging.getLogger(__name__)
 
 # Context variable for current session (async-safe)
 _current_session: ContextVar[Optional[PresentationSession]] = ContextVar(
-    'current_session',
-    default=None
+    "current_session", default=None
 )
 
 
@@ -47,6 +46,7 @@ try:
         ToolUseBlock,
         ToolResultBlock,
     )
+
     AGENT_SDK_AVAILABLE = True
     AGENT_SDK_ERROR = None
     print("[Agent] Claude Agent SDK loaded successfully")
@@ -68,18 +68,21 @@ except ImportError as e:
 
 # Fallback tool decorator when SDK not available
 if not AGENT_SDK_AVAILABLE:
+
     def tool(name: str, description: str, params: dict):
         def decorator(func):
             func._tool_name = name
             func._tool_description = description
             func._tool_params = params
             return func
+
         return decorator
 
 
 # =============================================================================
 # TOOL DEFINITIONS
 # =============================================================================
+
 
 @tool("create_presentation", "Create a new presentation", {"title": str})
 async def tool_create_presentation(args: dict[str, Any]) -> dict[str, Any]:
@@ -98,11 +101,15 @@ async def tool_create_presentation(args: dict[str, Any]) -> dict[str, Any]:
     return {"success": True, "title": title, "slide_count": 0}
 
 
-@tool("add_slide", "Add a new slide with HTML content", {
-    "html": str,
-    "position": int,  # Optional - defaults to end
-    "layout": str  # Optional - defaults to "blank"
-})
+@tool(
+    "add_slide",
+    "Add a new slide with HTML content",
+    {
+        "html": str,
+        "position": int,  # Optional - defaults to end
+        "layout": str,  # Optional - defaults to "blank"
+    },
+)
 async def tool_add_slide(args: dict[str, Any]) -> dict[str, Any]:
     """Add a new slide to the presentation."""
     session = get_current_session()
@@ -110,7 +117,9 @@ async def tool_add_slide(args: dict[str, Any]) -> dict[str, Any]:
         logger.error("add_slide called with no active session")
         return {"error": "No active session"}
     if not session.presentation:
-        logger.error("add_slide called but no presentation exists - agent should call create_presentation first")
+        logger.error(
+            "add_slide called but no presentation exists - agent should call create_presentation first"
+        )
         return {"error": "No presentation created. Use create_presentation first."}
 
     html = args.get("html", "")
@@ -139,7 +148,7 @@ async def tool_add_slide(args: dict[str, Any]) -> dict[str, Any]:
         slide_index=index,
         operation="ADD",
         params={"html": html, "layout": layout.value},
-        preview=f"Add slide at position {index + 1}"
+        preview=f"Add slide at position {index + 1}",
     )
     session.pending_edits.append(edit)
 
@@ -147,10 +156,11 @@ async def tool_add_slide(args: dict[str, Any]) -> dict[str, Any]:
     return {"success": True, "slide_index": index, "edit_id": edit.edit_id}
 
 
-@tool("update_slide", "Update an existing slide's HTML content", {
-    "slide_index": int,
-    "html": str
-})
+@tool(
+    "update_slide",
+    "Update an existing slide's HTML content",
+    {"slide_index": int, "html": str},
+)
 async def tool_update_slide(args: dict[str, Any]) -> dict[str, Any]:
     """Update the content of an existing slide."""
     session = get_current_session()
@@ -170,7 +180,7 @@ async def tool_update_slide(args: dict[str, Any]) -> dict[str, Any]:
         slide_index=slide_index,
         operation="UPDATE",
         params={"html": html},
-        preview=f"Update slide {slide_index + 1}"
+        preview=f"Update slide {slide_index + 1}",
     )
     session.pending_edits.append(edit)
 
@@ -196,17 +206,18 @@ async def tool_delete_slide(args: dict[str, Any]) -> dict[str, Any]:
         slide_index=slide_index,
         operation="DELETE",
         params={},
-        preview=f"Delete slide {slide_index + 1}"
+        preview=f"Delete slide {slide_index + 1}",
     )
     session.pending_edits.append(edit)
 
     return {"success": True, "slide_index": slide_index, "edit_id": edit.edit_id}
 
 
-@tool("reorder_slides", "Move a slide to a new position", {
-    "from_index": int,
-    "to_index": int
-})
+@tool(
+    "reorder_slides",
+    "Move a slide to a new position",
+    {"from_index": int, "to_index": int},
+)
 async def tool_reorder_slides(args: dict[str, Any]) -> dict[str, Any]:
     """Reorder slides in the presentation."""
     session = get_current_session()
@@ -229,7 +240,7 @@ async def tool_reorder_slides(args: dict[str, Any]) -> dict[str, Any]:
         slide_index=from_index,
         operation="REORDER",
         params={"to_index": to_index},
-        preview=f"Move slide {from_index + 1} to position {to_index + 1}"
+        preview=f"Move slide {from_index + 1} to position {to_index + 1}",
     )
     session.pending_edits.append(edit)
 
@@ -246,19 +257,22 @@ async def tool_list_slides(args: dict[str, Any]) -> dict[str, Any]:
         return {"slides": [], "count": 0}
 
     import re
+
     slides = []
     for slide in session.presentation.slides:
         # Create a preview by stripping HTML and truncating
-        preview = slide.html[:200].replace('<', ' <').replace('>', '> ')
-        preview = re.sub(r'<[^>]+>', '', preview).strip()
-        preview = ' '.join(preview.split())[:100]
+        preview = slide.html[:200].replace("<", " <").replace(">", "> ")
+        preview = re.sub(r"<[^>]+>", "", preview).strip()
+        preview = " ".join(preview.split())[:100]
 
-        slides.append({
-            "index": slide.index,
-            "layout": slide.layout.value,
-            "preview": preview,
-            "has_notes": bool(slide.notes)
-        })
+        slides.append(
+            {
+                "index": slide.index,
+                "layout": slide.layout.value,
+                "preview": preview,
+                "has_notes": bool(slide.notes),
+            }
+        )
 
     return {"slides": slides, "count": len(slides)}
 
@@ -282,7 +296,7 @@ async def tool_get_slide(args: dict[str, Any]) -> dict[str, Any]:
         "index": slide.index,
         "html": slide.html,
         "layout": slide.layout.value,
-        "notes": slide.notes
+        "notes": slide.notes,
     }
 
 
@@ -313,7 +327,7 @@ async def tool_get_pending_edits(args: dict[str, Any]) -> dict[str, Any]:
             "edit_id": e.edit_id,
             "slide_index": e.slide_index,
             "operation": e.operation,
-            "preview": e.preview
+            "preview": e.preview,
         }
         for e in session.pending_edits
     ]
@@ -341,7 +355,7 @@ async def tool_commit_edits(args: dict[str, Any]) -> dict[str, Any]:
                 slide = Slide(
                     index=edit.slide_index,
                     html=edit.params.get("html", ""),
-                    layout=SlideLayout(edit.params.get("layout", "blank"))
+                    layout=SlideLayout(edit.params.get("layout", "blank")),
                 )
                 # Insert at position
                 if edit.slide_index >= len(session.presentation.slides):
@@ -354,7 +368,9 @@ async def tool_commit_edits(args: dict[str, Any]) -> dict[str, Any]:
 
             elif edit.operation == "UPDATE":
                 if 0 <= edit.slide_index < len(session.presentation.slides):
-                    session.presentation.slides[edit.slide_index].html = edit.params.get("html", "")
+                    session.presentation.slides[edit.slide_index].html = (
+                        edit.params.get("html", "")
+                    )
 
             elif edit.operation == "DELETE":
                 if 0 <= edit.slide_index < len(session.presentation.slides):
@@ -384,11 +400,13 @@ async def tool_commit_edits(args: dict[str, Any]) -> dict[str, Any]:
     # Save session
     session_manager.save_session(session)
 
-    logger.info(f"Committed {applied_count} edits, total slides: {len(session.presentation.slides)}")
+    logger.info(
+        f"Committed {applied_count} edits, total slides: {len(session.presentation.slides)}"
+    )
     return {
         "success": True,
         "applied_count": applied_count,
-        "total_slides": len(session.presentation.slides)
+        "total_slides": len(session.presentation.slides),
     }
 
 
@@ -410,7 +428,9 @@ PRESENTATION_TOOLS = [
 ]
 
 # Tool name to function mapping for fallback mode
-TOOL_MAP = {func._tool_name: func for func in PRESENTATION_TOOLS if hasattr(func, '_tool_name')}
+TOOL_MAP = {
+    func._tool_name: func for func in PRESENTATION_TOOLS if hasattr(func, "_tool_name")
+}
 
 
 # =============================================================================
@@ -509,32 +529,34 @@ Use list_slides first to understand the current state before making any changes.
 # MESSAGE SERIALIZATION
 # =============================================================================
 
+
 def _extract_slide_title_from_html(html: str) -> str:
     """Extract the title/heading from slide HTML content."""
     import re
+
     if not html:
         return None
 
     # Try to find h1, h2, or first significant text
     # Pattern for h1 or h2 tags
-    heading_match = re.search(r'<h[12][^>]*>([^<]+)</h[12]>', html, re.IGNORECASE)
+    heading_match = re.search(r"<h[12][^>]*>([^<]+)</h[12]>", html, re.IGNORECASE)
     if heading_match:
         title = heading_match.group(1).strip()
         # Clean up any extra whitespace
-        title = ' '.join(title.split())
+        title = " ".join(title.split())
         if len(title) > 60:
             title = title[:57] + "..."
         return title
 
     # Fallback: try to get first meaningful text content
     # Remove all HTML tags and get first line
-    text = re.sub(r'<[^>]+>', ' ', html)
-    text = ' '.join(text.split()).strip()
+    text = re.sub(r"<[^>]+>", " ", html)
+    text = " ".join(text.split()).strip()
     if text:
         # Get first sentence or first 60 chars
         first_part = text[:60]
         if len(text) > 60:
-            first_part = first_part.rsplit(' ', 1)[0] + "..."
+            first_part = first_part.rsplit(" ", 1)[0] + "..."
         return first_part
 
     return None
@@ -543,17 +565,18 @@ def _extract_slide_title_from_html(html: str) -> str:
 def _extract_slide_content_from_html(html: str) -> str:
     """Extract full readable text content from slide HTML for display."""
     import re
+
     if not html:
         return None
 
     # Extract list items (handle nested content too)
-    list_items = re.findall(r'<li[^>]*>(.*?)</li>', html, re.IGNORECASE | re.DOTALL)
+    list_items = re.findall(r"<li[^>]*>(.*?)</li>", html, re.IGNORECASE | re.DOTALL)
 
     # Extract paragraphs
-    paragraphs = re.findall(r'<p[^>]*>(.*?)</p>', html, re.IGNORECASE | re.DOTALL)
+    paragraphs = re.findall(r"<p[^>]*>(.*?)</p>", html, re.IGNORECASE | re.DOTALL)
 
     # Extract div content that might contain text (for structured content)
-    divs_with_text = re.findall(r'<div[^>]*>([^<]+)</div>', html, re.IGNORECASE)
+    divs_with_text = re.findall(r"<div[^>]*>([^<]+)</div>", html, re.IGNORECASE)
 
     # Build content string
     content_parts = []
@@ -561,8 +584,8 @@ def _extract_slide_content_from_html(html: str) -> str:
     # Add bullet points - clean up any nested HTML
     for item in list_items:
         # Remove any nested HTML tags
-        item = re.sub(r'<[^>]+>', ' ', item)
-        item = ' '.join(item.split()).strip()
+        item = re.sub(r"<[^>]+>", " ", item)
+        item = " ".join(item.split()).strip()
         if item:
             content_parts.append(f"• {item}")
 
@@ -570,8 +593,8 @@ def _extract_slide_content_from_html(html: str) -> str:
     if not content_parts:
         for para in paragraphs:
             # Remove any nested HTML tags
-            para = re.sub(r'<[^>]+>', ' ', para)
-            para = ' '.join(para.split()).strip()
+            para = re.sub(r"<[^>]+>", " ", para)
+            para = " ".join(para.split()).strip()
             if para:
                 content_parts.append(para)
 
@@ -579,10 +602,14 @@ def _extract_slide_content_from_html(html: str) -> str:
     if not content_parts:
         # First, try to find strong/b tags as headers with following text
         # Pattern: <strong>Title:</strong> description
-        structured = re.findall(r'<(?:strong|b)[^>]*>([^<]+)</(?:strong|b)>\s*:?\s*([^<]*)', html, re.IGNORECASE)
+        structured = re.findall(
+            r"<(?:strong|b)[^>]*>([^<]+)</(?:strong|b)>\s*:?\s*([^<]*)",
+            html,
+            re.IGNORECASE,
+        )
         if structured:
             for title, desc in structured:
-                title = title.strip().rstrip(':')
+                title = title.strip().rstrip(":")
                 desc = desc.strip()
                 if title and desc:
                     content_parts.append(f"• {title}: {desc}")
@@ -592,23 +619,29 @@ def _extract_slide_content_from_html(html: str) -> str:
     # Last resort: extract all text and try to format it
     if not content_parts:
         # Remove script and style tags first
-        text = re.sub(r'<script[^>]*>.*?</script>', '', html, flags=re.DOTALL | re.IGNORECASE)
-        text = re.sub(r'<style[^>]*>.*?</style>', '', html, flags=re.DOTALL | re.IGNORECASE)
+        text = re.sub(
+            r"<script[^>]*>.*?</script>", "", html, flags=re.DOTALL | re.IGNORECASE
+        )
+        text = re.sub(
+            r"<style[^>]*>.*?</style>", "", html, flags=re.DOTALL | re.IGNORECASE
+        )
         # Remove h1/h2 (title) to avoid duplication
-        text = re.sub(r'<h[12][^>]*>.*?</h[12]>', '', text, flags=re.DOTALL | re.IGNORECASE)
+        text = re.sub(
+            r"<h[12][^>]*>.*?</h[12]>", "", text, flags=re.DOTALL | re.IGNORECASE
+        )
         # Replace block elements with newlines
-        text = re.sub(r'</(?:div|p|li|br)[^>]*>', '\n', text, flags=re.IGNORECASE)
-        text = re.sub(r'<br\s*/?>', '\n', text, flags=re.IGNORECASE)
+        text = re.sub(r"</(?:div|p|li|br)[^>]*>", "\n", text, flags=re.IGNORECASE)
+        text = re.sub(r"<br\s*/?>", "\n", text, flags=re.IGNORECASE)
         # Remove remaining HTML tags
-        text = re.sub(r'<[^>]+>', ' ', text)
+        text = re.sub(r"<[^>]+>", " ", text)
         # Clean up whitespace but preserve newlines
-        lines = [' '.join(line.split()).strip() for line in text.split('\n')]
+        lines = [" ".join(line.split()).strip() for line in text.split("\n")]
         lines = [line for line in lines if line]
         if lines:
             content_parts = lines
 
     if content_parts:
-        result = '\n'.join(content_parts)
+        result = "\n".join(content_parts)
         # Limit length but keep it readable
         if len(result) > 500:
             result = result[:497] + "..."
@@ -633,14 +666,20 @@ def _get_friendly_tool_description(tool_name: str, tool_input: dict) -> tuple[st
         html = tool_input.get("html", "")
         slide_title = _extract_slide_title_from_html(html)
         slide_content = _extract_slide_content_from_html(html)
-        friendly = f"Adding slide: {slide_title}" if slide_title else "Adding a new slide..."
+        friendly = (
+            f"Adding slide: {slide_title}" if slide_title else "Adding a new slide..."
+        )
         return friendly, slide_content
     elif "update_slide" in tool_name:
         idx = tool_input.get("slide_index", 0)
         html = tool_input.get("html", "")
         slide_title = _extract_slide_title_from_html(html)
         slide_content = _extract_slide_content_from_html(html)
-        friendly = f"Updating slide {idx + 1}: {slide_title}" if slide_title else f"Updating slide {idx + 1}..."
+        friendly = (
+            f"Updating slide {idx + 1}: {slide_title}"
+            if slide_title
+            else f"Updating slide {idx + 1}..."
+        )
         return friendly, slide_content
     elif "delete_slide" in tool_name:
         idx = tool_input.get("slide_index", 0)
@@ -673,14 +712,22 @@ def _serialize_message(message) -> dict:
             elif ToolUseBlock and isinstance(block, ToolUseBlock):
                 tool_name = getattr(block, "name", "unknown")
                 tool_input = getattr(block, "input", {})
-                friendly_desc, details = _get_friendly_tool_description(tool_name, tool_input)
+                friendly_desc, details = _get_friendly_tool_description(
+                    tool_name, tool_input
+                )
 
-                tool_calls.append({
-                    "name": tool_name,
-                    "input": tool_input if isinstance(tool_input, dict) else str(tool_input)[:200],
-                    "friendly": friendly_desc,
-                    "details": details,
-                })
+                tool_calls.append(
+                    {
+                        "name": tool_name,
+                        "input": (
+                            tool_input
+                            if isinstance(tool_input, dict)
+                            else str(tool_input)[:200]
+                        ),
+                        "friendly": friendly_desc,
+                        "details": details,
+                    }
+                )
 
         if texts:
             msg_dict["text"] = " ".join(texts)
@@ -718,6 +765,7 @@ def _serialize_message(message) -> dict:
 # AGENT OPTIONS
 # =============================================================================
 
+
 def _create_agent_options(
     session: PresentationSession,
     is_continuation: bool = False,
@@ -728,9 +776,7 @@ def _create_agent_options(
 
     # Create in-process MCP server with our tools
     pres_server = create_sdk_mcp_server(
-        name="presentation",
-        version="1.0.0",
-        tools=PRESENTATION_TOOLS
+        name="presentation", version="1.0.0", tools=PRESENTATION_TOOLS
     )
 
     # Use different system prompt for continuations
@@ -738,10 +784,13 @@ def _create_agent_options(
 
     # Add context files to prompt if available
     if session.context_files:
-        context_text = "\n\n".join([
-            f"=== {f['filename']} ===\n{f['text']}"
-            for f in session.context_files if f.get('text')
-        ])
+        context_text = "\n\n".join(
+            [
+                f"=== {f['filename']} ===\n{f['text']}"
+                for f in session.context_files
+                if f.get("text")
+            ]
+        )
         if context_text:
             system_prompt += f"\n\nCONTEXT FILES:\n{context_text}"
 
@@ -779,9 +828,9 @@ def _create_agent_options(
 # MULTIMODAL PROMPT BUILDER
 # =============================================================================
 
+
 def _build_multimodal_content(
-    session: PresentationSession,
-    instructions: str
+    session: PresentationSession, instructions: str
 ) -> list[dict]:
     """
     Build multimodal content blocks with template screenshots if available.
@@ -794,29 +843,34 @@ def _build_multimodal_content(
     if session.style_template and session.style_template.get("screenshots"):
         screenshots = session.style_template["screenshots"]
 
-        content_blocks.append({
-            "type": "text",
-            "text": f"STYLE TEMPLATE REFERENCE SCREENSHOTS:\nThe following {len(screenshots)} screenshots show the visual style you should emulate when creating slides:"
-        })
+        content_blocks.append(
+            {
+                "type": "text",
+                "text": f"STYLE TEMPLATE REFERENCE SCREENSHOTS:\nThe following {len(screenshots)} screenshots show the visual style you should emulate when creating slides:",
+            }
+        )
 
         for i, screenshot in enumerate(screenshots):
-            content_blocks.append({
-                "type": "text",
-                "text": f"\nSlide {screenshot.get('index', i) + 1}:"
-            })
-            content_blocks.append({
-                "type": "image",
-                "source": {
-                    "type": "base64",
-                    "media_type": "image/jpeg",
-                    "data": screenshot["data"],
+            content_blocks.append(
+                {"type": "text", "text": f"\nSlide {screenshot.get('index', i) + 1}:"}
+            )
+            content_blocks.append(
+                {
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": "image/jpeg",
+                        "data": screenshot["data"],
+                    },
                 }
-            })
+            )
 
-        content_blocks.append({
-            "type": "text",
-            "text": "\nIMPORTANT: Match this template's visual style - colors, fonts, layout patterns, and design elements.\n\n---\n\nUSER REQUEST:"
-        })
+        content_blocks.append(
+            {
+                "type": "text",
+                "text": "\nIMPORTANT: Match this template's visual style - colors, fonts, layout patterns, and design elements.\n\n---\n\nUSER REQUEST:",
+            }
+        )
 
     # Add user instructions
     content_blocks.append({"type": "text", "text": instructions})
@@ -825,8 +879,7 @@ def _build_multimodal_content(
 
 
 async def _build_multimodal_prompt(
-    session: PresentationSession,
-    instructions: str
+    session: PresentationSession, instructions: str
 ) -> AsyncGenerator[dict, None]:
     """
     Build multimodal prompt as a user message with content blocks.
@@ -839,10 +892,7 @@ async def _build_multimodal_prompt(
     # SDK format: type + message wrapper + Anthropic API content
     yield {
         "type": "user",
-        "message": {
-            "role": "user",
-            "content": content_blocks
-        },
+        "message": {"role": "user", "content": content_blocks},
         "parent_tool_use_id": None,
         # session_id will be added by query() if not present
     }
@@ -851,6 +901,7 @@ async def _build_multimodal_prompt(
 # =============================================================================
 # INPUT PRE-PROCESSING
 # =============================================================================
+
 
 def _preprocess_instructions(instructions: str) -> str:
     """Normalize instructions containing multiple quoted segments into a single
@@ -888,11 +939,11 @@ def _preprocess_instructions(instructions: str) -> str:
     # rewrite it.
     list_pattern = re.compile(
         r'"[^"]+"\\s*'
-        r'(?:'
-        r'(?:\\r?\\n\\s*[-*]\\s*"[^"]+")'   # newline + bullet + quoted text
-        r'|'
-        r'(?:\\s+-\\s*"[^"]+")'          # inline " - " quoted text
-        r')+',
+        r"(?:"
+        r'(?:\\r?\\n\\s*[-*]\\s*"[^"]+")'  # newline + bullet + quoted text
+        r"|"
+        r'(?:\\s+-\\s*"[^"]+")'  # inline " - " quoted text
+        r")+",
         re.MULTILINE,
     )
     if not list_pattern.search(stripped):
@@ -908,14 +959,18 @@ def _preprocess_instructions(instructions: str) -> str:
     for q in quoted:
         # Extract topic: "about TOPIC" pattern
         if not topic:
-            m = re.search(r'\babout\s+(.+?)(?:\s+with\b|\s+using\b|\s+and\b|\s*$)', q, re.IGNORECASE)
+            m = re.search(
+                r"\babout\s+(.+?)(?:\s+with\b|\s+using\b|\s+and\b|\s*$)",
+                q,
+                re.IGNORECASE,
+            )
             if m:
-                topic = m.group(1).strip().rstrip('.,;')
+                topic = m.group(1).strip().rstrip(".,;")
 
         # Extract requested slide count: "2-slide", "3 slide" etc.
         # Note: Currently only supports numeric digits, not spelled-out numbers
         if not slide_count:
-            m = re.search(r'(\d+)[- ]slide', q, re.IGNORECASE)
+            m = re.search(r"(\d+)[- ]slide", q, re.IGNORECASE)
             if m:
                 slide_count = int(m.group(1))
 
@@ -932,7 +987,10 @@ def _preprocess_instructions(instructions: str) -> str:
         lower = q.lower()
 
         # "Create X-slide deck about TOPIC" — drives topic/count; also seed default slides if needed
-        if re.search(r'\bcreate\b.*\bdeck\b|\bcreate\b.*\bpresentation\b|\bcreate\b.*\bslides?\b', lower):
+        if re.search(
+            r"\bcreate\b.*\bdeck\b|\bcreate\b.*\bpresentation\b|\bcreate\b.*\bslides?\b",
+            lower,
+        ):
             if slide_count and not seeded_from_create:
                 # Use the parsed topic if available; otherwise fall back to this quote text
                 topic_for_defaults = topic or q
@@ -958,27 +1016,31 @@ def _preprocess_instructions(instructions: str) -> str:
             continue
 
         # Title slide (engaging variant)
-        if re.search(r'\btitle\b.*\bengag', lower) or re.search(r'\bengag.*\btitle\b', lower):
+        if re.search(r"\btitle\b.*\bengag", lower) or re.search(
+            r"\bengag.*\btitle\b", lower
+        ):
             title_slides.append(
                 f"Slide 1 (Title — make it visually engaging): bold headline about '{topic or q}', "
                 "a compelling subtitle, key statistic or hook, striking colour gradient or accent."
             )
-        elif re.search(r'\btitle slide\b', lower):
+        elif re.search(r"\btitle slide\b", lower):
             title_slides.append(
                 f"Slide 1 (Title): A clear title slide about '{topic or q}'."
             )
         # Neural-network specific (common demo query)
-        elif re.search(r'\bneural network', lower):
+        elif re.search(r"\bneural network", lower):
             content_slides.append(
                 "Content slide — Neural Networks: bullet points covering what neural networks are, "
                 "how they work (layers, activation functions, backpropagation), "
                 "and real-world applications (image recognition, NLP, etc.)."
             )
         # Generic "add a slide about X [with bullet points]"
-        elif re.search(r'\badd a slide about\b', lower) or re.search(r'\bslide about\b', lower):
-            m = re.search(r'(?:slide about|about)\s+(.+?)(?:\s+with\b|\s*$)', lower)
+        elif re.search(r"\badd a slide about\b", lower) or re.search(
+            r"\bslide about\b", lower
+        ):
+            m = re.search(r"(?:slide about|about)\s+(.+?)(?:\s+with\b|\s*$)", lower)
             subtopic = m.group(1).strip() if m else q
-            has_bullets = 'bullet' in lower or 'points' in lower or 'list' in lower
+            has_bullets = "bullet" in lower or "points" in lower or "list" in lower
             fmt = " as a bullet-point list" if has_bullets else ""
             content_slides.append(
                 f"Content slide — {subtopic.title()}: informative content{fmt} "
@@ -1020,10 +1082,14 @@ def _preprocess_instructions(instructions: str) -> str:
     slides_plan = "\n".join(f"  {s}" for s in slide_instructions)
 
     content_warning = (
-        f"\nCONTENT RULE: Every slide MUST contain real, accurate information about "
-        f"'{topic}'. NEVER use generic filler text like 'Key Features', 'Benefits', "
-        f"'Our Solution', or 'Thank You'.\n"
-    ) if topic else ""
+        (
+            f"\nCONTENT RULE: Every slide MUST contain real, accurate information about "
+            f"'{topic}'. NEVER use generic filler text like 'Key Features', 'Benefits', "
+            f"'Our Solution', or 'Thank You'.\n"
+        )
+        if topic
+        else ""
+    )
 
     return (
         f"Create a presentation{topic_phrase}{count_phrase} with the following slides:\n"
@@ -1038,14 +1104,12 @@ def _preprocess_instructions(instructions: str) -> str:
 # AGENT STREAMING
 # =============================================================================
 
+
 async def _simple_prompt(text: str) -> AsyncGenerator[dict, None]:
     """Yield a single plain-text user message in SDK wire format."""
     yield {
         "type": "user",
-        "message": {
-            "role": "user",
-            "content": [{"type": "text", "text": text}]
-        },
+        "message": {"role": "user", "content": [{"type": "text", "text": text}]},
         "parent_tool_use_id": None,
     }
 
@@ -1070,12 +1134,17 @@ async def run_agent_stream(
     Yields:
         SSE event dictionaries
     """
-    print(f"[Agent Stream] Starting with is_continuation={is_continuation}, "
-          f"resume_session_id={resume_session_id}, user_session_id={user_session_id}")
+    print(
+        f"[Agent Stream] Starting with is_continuation={is_continuation}, "
+        f"resume_session_id={resume_session_id}, user_session_id={user_session_id}"
+    )
 
     if not AGENT_SDK_AVAILABLE:
         print(f"[Agent Stream] SDK not available: {AGENT_SDK_ERROR}")
-        yield {"type": "error", "error": f"Claude Agent SDK not available: {AGENT_SDK_ERROR}"}
+        yield {
+            "type": "error",
+            "error": f"Claude Agent SDK not available: {AGENT_SDK_ERROR}",
+        }
         return
 
     # Get or create session
@@ -1094,7 +1163,11 @@ async def run_agent_stream(
 
     set_current_session(session)
 
-    yield {"type": "init", "message": "Starting agent...", "session_id": session.session_id}
+    yield {
+        "type": "init",
+        "message": "Starting agent...",
+        "session_id": session.session_id,
+    }
     yield {"type": "status", "message": "Connecting to Claude Agent SDK..."}
 
     options = _create_agent_options(session, is_continuation, resume_session_id)
@@ -1107,7 +1180,9 @@ async def run_agent_stream(
             print(f"[Agent Stream] Connected, sending query...")
             yield {"type": "status", "message": "Agent connected, processing..."}
 
-            await client.query(_build_multimodal_prompt(session, effective_instructions))
+            await client.query(
+                _build_multimodal_prompt(session, effective_instructions)
+            )
 
             async for message in client.receive_response():
                 message_count += 1
@@ -1117,14 +1192,20 @@ async def run_agent_stream(
                     for block in message.content:
                         if isinstance(block, TextBlock):
                             result_text = block.text
-                            preview = result_text[:200].replace('\n', ' ')
-                            print(f"[Agent Stream] #{message_count} {msg_type}: {preview}...")
+                            preview = result_text[:200].replace("\n", " ")
+                            print(
+                                f"[Agent Stream] #{message_count} {msg_type}: {preview}..."
+                            )
                         else:
                             block_type = type(block).__name__
-                            print(f"[Agent Stream] #{message_count} {msg_type}/{block_type}")
+                            print(
+                                f"[Agent Stream] #{message_count} {msg_type}/{block_type}"
+                            )
                 elif ResultMessage and isinstance(message, ResultMessage):
-                    agent_session_id = getattr(message, 'session_id', None)
-                    print(f"[Agent Stream] #{message_count} {msg_type}: session_id={agent_session_id}")
+                    agent_session_id = getattr(message, "session_id", None)
+                    print(
+                        f"[Agent Stream] #{message_count} {msg_type}: session_id={agent_session_id}"
+                    )
                 else:
                     print(f"[Agent Stream] #{message_count} {msg_type}")
 
@@ -1133,6 +1214,7 @@ async def run_agent_stream(
     except Exception as e:
         print(f"[Agent Stream] Error: {e}")
         import traceback
+
         traceback.print_exc()
         yield {"type": "error", "error": f"Agent error: {str(e)}"}
         return
@@ -1144,9 +1226,16 @@ async def run_agent_stream(
     # Automatic retry when agent produced 0 slides (clarification loop guard)
     # --------------------------------------------------------------------------
     slide_count = len(session.presentation.slides) if session.presentation else 0
-    pending_edits_count = len(session.pending_edits) if hasattr(session, "pending_edits") else 0
+    pending_edits_count = (
+        len(session.pending_edits) if hasattr(session, "pending_edits") else 0
+    )
 
-    if slide_count == 0 and pending_edits_count == 0 and not is_continuation and agent_session_id:
+    if (
+        slide_count == 0
+        and pending_edits_count == 0
+        and not is_continuation
+        and agent_session_id
+    ):
         logger.warning(
             f"Agent produced 0 slides on first run — retrying as continuation. "
             f"agent_session_id={agent_session_id}"
@@ -1156,9 +1245,16 @@ async def run_agent_stream(
         # Determine minimum required slides from the preprocessed instructions
         # Extract any slide count mentioned in the original request
         import re
-        slide_count_match = re.search(r'(\d+)[- ]slide', raw_instructions, re.IGNORECASE)
+
+        slide_count_match = re.search(
+            r"(\d+)[- ]slide", raw_instructions, re.IGNORECASE
+        )
         min_slides = int(slide_count_match.group(1)) if slide_count_match else 1
-        min_slides_phrase = f"at least {min_slides} time{'s' if min_slides > 1 else ''}" if min_slides > 1 else "at least once"
+        min_slides_phrase = (
+            f"at least {min_slides} time{'s' if min_slides > 1 else ''}"
+            if min_slides > 1
+            else "at least once"
+        )
 
         retry_text = (
             "You have not created any slides yet. This is not acceptable.\n\n"
@@ -1187,14 +1283,20 @@ async def run_agent_stream(
                         for block in message.content:
                             if isinstance(block, TextBlock):
                                 result_text = block.text
-                                preview = result_text[:200].replace('\n', ' ')
-                                print(f"[Agent Stream] Retry #{message_count} {msg_type}: {preview}...")
+                                preview = result_text[:200].replace("\n", " ")
+                                print(
+                                    f"[Agent Stream] Retry #{message_count} {msg_type}: {preview}..."
+                                )
                             else:
                                 block_type = type(block).__name__
-                                print(f"[Agent Stream] Retry #{message_count} {msg_type}/{block_type}")
+                                print(
+                                    f"[Agent Stream] Retry #{message_count} {msg_type}/{block_type}"
+                                )
                     elif ResultMessage and isinstance(message, ResultMessage):
-                        agent_session_id = getattr(message, 'session_id', None)
-                        print(f"[Agent Stream] Retry #{message_count} {msg_type}: session_id={agent_session_id}")
+                        agent_session_id = getattr(message, "session_id", None)
+                        print(
+                            f"[Agent Stream] Retry #{message_count} {msg_type}: session_id={agent_session_id}"
+                        )
                     else:
                         print(f"[Agent Stream] Retry #{message_count} {msg_type}")
 
@@ -1203,6 +1305,7 @@ async def run_agent_stream(
         except Exception as e:
             print(f"[Agent Stream] Retry error: {e}")
             import traceback
+
             traceback.print_exc()
             yield {"type": "error", "error": f"Retry agent error: {str(e)}"}
 
@@ -1226,7 +1329,7 @@ async def run_agent_stream(
             "error": "Agent failed to create any slides. Please try again with a more specific request.",
             "message_count": message_count,
             "session_id": agent_session_id,
-            "user_session_id": session.session_id
+            "user_session_id": session.session_id,
         }
         return
 
@@ -1237,5 +1340,5 @@ async def run_agent_stream(
         "message_count": message_count,
         "session_id": agent_session_id,
         "user_session_id": session.session_id,
-        "slide_count": slide_count
+        "slide_count": slide_count,
     }

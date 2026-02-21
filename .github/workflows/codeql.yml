@@ -5,24 +5,16 @@ name: CodeQL Security Analysis
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, develop ]
   pull_request:
-    branches: [ main ]
-    paths-ignore:
-      - '**/*.md'
-      - 'docs/**'
+    branches: [ main, develop ]
   schedule:
     # Every Monday at 06:30 UTC — ensures weekly baseline scan
     - cron: '30 6 * * 1'
   workflow_call:
     inputs:
-      languages:
-        description: 'Comma-separated list of languages to analyze (default: python,javascript-typescript)'
-        required: false
-        type: string
-        default: 'python,javascript-typescript'
       config-file:
-        description: 'Path to a custom CodeQL config file'
+        description: 'Path to a custom CodeQL config file (default: .github/codeql-config.yml)'
         required: false
         type: string
         default: ''

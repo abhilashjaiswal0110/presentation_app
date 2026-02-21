@@ -2,12 +2,14 @@
 """
 Test script to verify PPT creation functionality end-to-end.
 """
+
 import httpx
 import json
 import asyncio
 import sys
 
 API_BASE = "http://localhost:8000"
+
 
 async def test_create_presentation():
     """Test creating a simple presentation via the agent."""
@@ -26,12 +28,12 @@ async def test_create_presentation():
         try:
             # Make streaming request to agent
             async with client.stream(
-                "POST",
-                f"{API_BASE}/agent-stream",
-                data=form_data
+                "POST", f"{API_BASE}/agent-stream", data=form_data
             ) as response:
                 if response.status_code != 200:
-                    print(f"ERROR: Agent request failed with status {response.status_code}")
+                    print(
+                        f"ERROR: Agent request failed with status {response.status_code}"
+                    )
                     return False
 
                 user_session_id = None
@@ -51,18 +53,18 @@ async def test_create_presentation():
                             elif msg_type == "status":
                                 print(f"   -> {data.get('message')}")
                             elif msg_type == "tool_use":
-                                friendly = data.get('friendly', [])
+                                friendly = data.get("friendly", [])
                                 if friendly:
                                     for desc in friendly:
                                         print(f"   [TOOL] {desc}")
                             elif msg_type == "assistant":
-                                text = data.get('text', '')
+                                text = data.get("text", "")
                                 if text:
-                                    preview = text[:80].replace('\n', ' ')
+                                    preview = text[:80].replace("\n", " ")
                                     print(f"   [AGENT] {preview}...")
                             elif msg_type == "complete":
-                                user_session_id = data.get('user_session_id')
-                                slide_count = data.get('slide_count', 0)
+                                user_session_id = data.get("user_session_id")
+                                slide_count = data.get("slide_count", 0)
                                 print(f"\n   [OK] Agent completed!")
                                 print(f"   Session ID: {user_session_id}")
                                 print(f"   Slides created: {slide_count}")
@@ -70,7 +72,9 @@ async def test_create_presentation():
                                 print(f"\n   [ERROR] Error: {data.get('error')}")
                                 return False
                         except json.JSONDecodeError as e:
-                            print(f"   [WARN] Skipping invalid JSON line from agent: {data_str!r} ({e})")
+                            print(
+                                f"   [WARN] Skipping invalid JSON line from agent: {data_str!r} ({e})"
+                            )
                             continue
 
                 if not user_session_id:
@@ -83,31 +87,41 @@ async def test_create_presentation():
 
                 print(f"\n3. Retrieving session data...")
                 # Get session to verify it exists
-                session_response = await client.get(f"{API_BASE}/session/{user_session_id}")
+                session_response = await client.get(
+                    f"{API_BASE}/session/{user_session_id}"
+                )
                 if session_response.status_code != 200:
-                    print(f"ERROR: Could not retrieve session: {session_response.status_code}")
+                    print(
+                        f"ERROR: Could not retrieve session: {session_response.status_code}"
+                    )
                     return False
 
                 session_data = session_response.json()
-                presentation = session_data.get('presentation')
+                presentation = session_data.get("presentation")
                 if not presentation:
                     print("ERROR: No presentation in session")
                     return False
 
                 print(f"   [OK] Presentation title: {presentation.get('title')}")
-                print(f"   [OK] Number of slides: {len(presentation.get('slides', []))}")
+                print(
+                    f"   [OK] Number of slides: {len(presentation.get('slides', []))}"
+                )
 
                 # List slides
                 print(f"\n4. Verifying slides...")
-                for i, slide in enumerate(presentation.get('slides', [])):
-                    preview = slide.get('html', '')[:60].replace('\n', ' ')
+                for i, slide in enumerate(presentation.get("slides", [])):
+                    preview = slide.get("html", "")[:60].replace("\n", " ")
                     print(f"   Slide {i+1}: {preview}...")
 
                 # Test export functionality
                 print(f"\n5. Testing PPTX export...")
-                export_response = await client.get(f"{API_BASE}/session/{user_session_id}/export")
+                export_response = await client.get(
+                    f"{API_BASE}/session/{user_session_id}/export"
+                )
                 if export_response.status_code != 200:
-                    print(f"ERROR: Export failed with status {export_response.status_code}")
+                    print(
+                        f"ERROR: Export failed with status {export_response.status_code}"
+                    )
                     print(f"Response: {export_response.text}")
                     return False
 
@@ -116,7 +130,7 @@ async def test_create_presentation():
                 print(f"   File size: {pptx_size:,} bytes")
 
                 # Verify it's a valid PPTX file (starts with PK zip signature)
-                if export_response.content[:4] == b'PK\x03\x04':
+                if export_response.content[:4] == b"PK\x03\x04":
                     print(f"   [OK] Valid PPTX file format confirmed")
                 else:
                     print(f"   [WARN] Warning: File may not be valid PPTX format")
@@ -132,8 +146,10 @@ async def test_create_presentation():
         except Exception as e:
             print(f"ERROR: {type(e).__name__}: {e}")
             import traceback
+
             traceback.print_exc()
             return False
+
 
 if __name__ == "__main__":
     success = asyncio.run(test_create_presentation())

@@ -11,6 +11,7 @@ from enum import Enum
 
 class SlideLayout(Enum):
     """Predefined slide layouts."""
+
     TITLE = "title"
     TITLE_CONTENT = "title_content"
     TWO_COLUMN = "two_column"
@@ -20,6 +21,7 @@ class SlideLayout(Enum):
 @dataclass
 class Slide:
     """Represents a single slide in a presentation."""
+
     index: int
     html: str  # Raw HTML content
     layout: SlideLayout = SlideLayout.BLANK
@@ -31,7 +33,7 @@ class Slide:
             "index": self.index,
             "html": self.html,
             "layout": self.layout.value,
-            "notes": self.notes
+            "notes": self.notes,
         }
 
     @classmethod
@@ -41,13 +43,14 @@ class Slide:
             index=data["index"],
             html=data["html"],
             layout=SlideLayout(data.get("layout", "blank")),
-            notes=data.get("notes", "")
+            notes=data.get("notes", ""),
         )
 
 
 @dataclass
 class Presentation:
     """Represents a complete presentation."""
+
     title: str
     slides: list[Slide] = field(default_factory=list)
     theme: dict = field(default_factory=dict)  # Colors, fonts
@@ -57,7 +60,7 @@ class Presentation:
         return {
             "title": self.title,
             "slides": [slide.to_dict() for slide in self.slides],
-            "theme": self.theme
+            "theme": self.theme,
         }
 
     @classmethod
@@ -66,13 +69,14 @@ class Presentation:
         return cls(
             title=data["title"],
             slides=[Slide.from_dict(s) for s in data.get("slides", [])],
-            theme=data.get("theme", {})
+            theme=data.get("theme", {}),
         )
 
 
 @dataclass
 class PendingEdit:
     """Represents a staged edit that hasn't been committed yet."""
+
     edit_id: str
     slide_index: int
     operation: str  # ADD, UPDATE, DELETE, REORDER
@@ -86,7 +90,7 @@ class PendingEdit:
             "slide_index": self.slide_index,
             "operation": self.operation,
             "params": self.params,
-            "preview": self.preview
+            "preview": self.preview,
         }
 
     @classmethod
@@ -97,5 +101,5 @@ class PendingEdit:
             slide_index=data["slide_index"],
             operation=data["operation"],
             params=data["params"],
-            preview=data["preview"]
+            preview=data["preview"],
         )
