@@ -21,6 +21,12 @@ name: Setup Repository Branch Protection
 # ─────────────────────────────────────────────────────────────────────────────
 
 on:
+  # push and pull_request triggers are required so that GitHub can actually
+  # execute the `not-manual` no-op job (see below) instead of creating a ghost
+  # "failure" run entry for a workflow_dispatch-only file.
+  push:
+    branches: ['**']
+  pull_request: {}
   workflow_dispatch:
     inputs:
       confirm:
