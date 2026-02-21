@@ -156,25 +156,26 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const body = `## 🤖 Automated PR Checks
-
-            All the following checks run automatically on this PR. The PR will be eligible
-            for auto-merge once **every required check passes**.
-
-            | Check | Status |
-            |-------|--------|
-            | 🔍 Backend Lint & Test | Runs on push |
-            | 🎨 Frontend Lint & Build | Runs on push |
-            | 🛡️ CodeQL Security Scan | Runs on push |
-            | 📦 Dependency Review | Runs on PR |
-            | 🔒 Vulnerability Scan | Runs on push |
-            | ✅ All Checks Gate | Required before merge |
-
-            **Copilot code review** has been requested. Address any feedback before merging.
-
-            > 💡 Add the \`auto-merge\` label to enable automatic squash-merge once all checks pass.
-            `;
-
+            const lines = [
+              '## 🤖 Automated PR Checks',
+              '',
+              'All the following checks run automatically on this PR. The PR will be eligible',
+              'for auto-merge once **every required check passes**.',
+              '',
+              '| Check | Status |',
+              '|-------|--------|',
+              '| 🔍 Backend Lint & Test | Runs on push |',
+              '| 🎨 Frontend Lint & Build | Runs on push |',
+              '| 🛡️ CodeQL Security Scan | Runs on push |',
+              '| 📦 Dependency Review | Runs on PR |',
+              '| 🔒 Vulnerability Scan | Runs on push |',
+              '| ✅ All Checks Gate | Required before merge |',
+              '',
+              '**Copilot code review** has been requested. Address any feedback before merging.',
+              '',
+              '> 💡 Add the `auto-merge` label to enable automatic squash-merge once all checks pass.',
+            ];
+            const body = lines.join('\n');
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,

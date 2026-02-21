@@ -618,12 +618,20 @@ def _extract_slide_content_from_html(html: str) -> str:
 
     # Last resort: extract all text and try to format it
     if not content_parts:
-        # Remove script and style tags first
+        # Remove script and style tags first.
+        # The closing-tag pattern uses [^>]* to handle any whitespace or
+        # unexpected attributes before >, matching variants like </script >.
         text = re.sub(
-            r"<script[^>]*>.*?</script>", "", html, flags=re.DOTALL | re.IGNORECASE
+            r"<script[^>]*>.*?</\s*script[^>]*>",
+            "",
+            html,
+            flags=re.DOTALL | re.IGNORECASE,
         )
         text = re.sub(
-            r"<style[^>]*>.*?</style>", "", html, flags=re.DOTALL | re.IGNORECASE
+            r"<style[^>]*>.*?</\s*style[^>]*>",
+            "",
+            html,
+            flags=re.DOTALL | re.IGNORECASE,
         )
         # Remove h1/h2 (title) to avoid duplication
         text = re.sub(

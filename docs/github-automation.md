@@ -243,6 +243,12 @@ Trigger the `setup-repo.yml` workflow once as a repository admin.
 
 ## FAQ
 
+**Q: Why do workflows show `action_required` on the first run?**  
+A: GitHub requires the repository owner to manually approve the first workflow run
+triggered by a bot actor (such as the Copilot SWE Agent). Go to **Actions tab →
+find the pending run → click "Approve and run"**. This is a one-time step. All
+subsequent runs from the repo owner's commits will execute automatically.
+
 **Q: Why is my PR blocked from merging?**  
 A: The `All Checks Passed` job failed. Check individual job logs for details.
 

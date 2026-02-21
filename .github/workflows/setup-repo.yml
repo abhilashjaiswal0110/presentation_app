@@ -45,6 +45,11 @@ jobs:
   setup-branch-protection:
     name: Configure Branch Protection
     runs-on: ubuntu-latest
+    # Safety guard: only run when explicitly triggered via workflow_dispatch.
+    # This prevents a spurious "failure" entry when GitHub evaluates the file
+    # on push events (GitHub creates run records for all workflow files it
+    # detects, even when their triggers don't match the current event).
+    if: github.event_name == 'workflow_dispatch'
 
     steps:
       - name: Validate confirmation input
