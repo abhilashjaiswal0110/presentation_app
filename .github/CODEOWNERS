@@ -1,0 +1,25 @@
+# CODEOWNERS — auto-assigns reviewers for PRs based on file path.
+# Syntax: <path-pattern>  <owner> [<owner2> ...]
+# See: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default owner for everything not matched below
+*                           @abhilashjaiswal0110
+
+# Backend Python source
+/backend/**                 @abhilashjaiswal0110
+
+# Frontend Next.js source
+/web/**                     @abhilashjaiswal0110
+
+# GitHub Actions and repo config — require explicit review
+/.github/**                 @abhilashjaiswal0110
+
+# Security-sensitive files — require explicit review
+SECURITY.md                 @abhilashjaiswal0110
+/backend/requirements.txt   @abhilashjaiswal0110
+/web/package.json           @abhilashjaiswal0110
+/web/package-lock.json      @abhilashjaiswal0110
+
+# Documentation
+/docs/**                    @abhilashjaiswal0110
+README.md                   @abhilashjaiswal0110

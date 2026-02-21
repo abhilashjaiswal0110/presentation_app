@@ -1,0 +1,18 @@
+# CodeQL configuration — customises which queries run and which paths to ignore.
+# Reference: https://docs.github.com/en/code-security/code-scanning/creating-an-advanced-setup-for-code-scanning/customizing-your-advanced-setup-for-code-scanning
+
+name: "Presentation App CodeQL Config"
+
+# Run both security and quality suites
+queries:
+  - uses: security-and-quality
+
+# Exclude generated, vendored, and non-source paths from analysis
+paths-ignore:
+  - '**/node_modules/**'
+  - '**/dist/**'
+  - '**/.next/**'
+  - '**/coverage/**'
+  - '**/__pycache__/**'
+  - '**/*.min.js'
+  - 'web/public/**'

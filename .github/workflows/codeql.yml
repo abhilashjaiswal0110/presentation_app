@@ -1,0 +1,65 @@
+name: CodeQL Security Analysis
+
+# Reusable: call this from other workflows via workflow_call.
+# Also runs on its own schedule for the main branch.
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+  schedule:
+    # Every Monday at 06:30 UTC — ensures weekly baseline scan
+    - cron: '30 6 * * 1'
+  workflow_call:
+    inputs:
+      languages:
+        description: 'Comma-separated list of languages to analyze (default: python,javascript-typescript)'
+        required: false
+        type: string
+        default: 'python,javascript-typescript'
+      config-file:
+        description: 'Path to a custom CodeQL config file'
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  actions: read
+  contents: read
+  security-events: write
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [ python, javascript-typescript ]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          # Optional: custom config path passed by caller
+          config-file: ${{ inputs.config-file != '' && inputs.config-file || '.github/codeql-config.yml' }}
+          queries: security-and-quality
+
+      # Autobuild works for Python and JS/TS without manual build steps
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:${{ matrix.language }}"
+          upload: true

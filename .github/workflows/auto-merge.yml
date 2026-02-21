@@ -1,0 +1,76 @@
+name: Auto-Merge
+
+# Enables squash auto-merge for PRs that:
+#   • carry the `auto-merge` label, OR
+#   • are opened by Dependabot
+# The merge is deferred until GitHub's built-in auto-merge feature determines
+# that ALL required status checks pass and any required reviews are approved.
+
+on:
+  pull_request:
+    types: [labeled, opened, synchronize, reopened]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  enable-auto-merge:
+    name: Enable Auto-Merge
+    runs-on: ubuntu-latest
+
+    # Trigger only for Dependabot PRs or PRs explicitly labelled `auto-merge`
+    if: |
+      github.actor == 'dependabot[bot]' ||
+      contains(github.event.pull_request.labels.*.name, 'auto-merge')
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Enable squash auto-merge
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        # `gh pr merge --auto` queues the merge; GitHub will complete it once
+        # all required checks pass.  --squash keeps the history clean.
+        run: |
+          gh pr merge --auto --squash "$PR_URL" \
+            --subject "$(gh pr view "$PR_URL" --json title -q .title)" \
+            || echo "Auto-merge already enabled or merge not possible yet."
+
+  # ──────────────────────────────────────────────────────────────
+  # Dependabot: automatically approve patch/minor updates so the
+  # auto-merge above can proceed without a blocking review.
+  # ──────────────────────────────────────────────────────────────
+  approve-dependabot:
+    name: Approve Dependabot PR
+    runs-on: ubuntu-latest
+    if: github.actor == 'dependabot[bot]'
+
+    steps:
+      - name: Fetch Dependabot metadata
+        id: metadata
+        uses: dependabot/fetch-metadata@v2
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Approve patch and minor updates
+        if: |
+          steps.metadata.outputs.update-type == 'version-update:semver-patch' ||
+          steps.metadata.outputs.update-type == 'version-update:semver-minor'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: |
+          gh pr review --approve "$PR_URL" \
+            --body "🤖 Auto-approved: ${{ steps.metadata.outputs.update-type }} update by Dependabot."
+
+      - name: Comment on major updates (no auto-approval)
+        if: steps.metadata.outputs.update-type == 'version-update:semver-major'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: |
+          gh pr comment "$PR_URL" \
+            --body "⚠️ This is a **major** version update. Manual review and approval required before merging."

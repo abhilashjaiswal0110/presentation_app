@@ -1,162 +1,96 @@
 name: CI/CD Pipeline
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Runs on every push to main/develop and on every PR targeting those branches.
+# Orchestrates three concerns:
+#   1. CI (build + lint + test)   — delegates to ci-reusable.yml
+#   2. Security scanning          — delegates to codeql.yml + dependency-review
+#   3. Final gate                 — ensures all required jobs succeeded
+# ─────────────────────────────────────────────────────────────────────────────
+
 on:
   push:
     branches: [ main, develop ]
   pull_request:
     branches: [ main, develop ]
 
+permissions:
+  # Minimum permissions — jobs declare additional permissions as needed.
+  contents: read
+
 env:
   PYTHON_VERSION: '3.11'
   NODE_VERSION: '18'
 
 jobs:
-  backend-lint-and-test:
-    name: Backend - Lint & Test
-    runs-on: ubuntu-latest
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+  # ── 1. CI via reusable template ──────────────────────────────────────────
+  ci:
+    name: CI
+    uses: ./.github/workflows/ci-reusable.yml
+    with:
+      python-version: '3.11'
+      node-version: '18'
+      backend-dir: './backend'
+      frontend-dir: './web'
+      run-backend-tests: true
+      run-frontend-tests: true
+      run-security-scan: true
+    secrets:
+      codecov-token: ${{ secrets.CODECOV_TOKEN }}
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-          cache: 'pip'
+  # ── 2. CodeQL static security analysis ──────────────────────────────────
+  codeql:
+    name: CodeQL
+    uses: ./.github/workflows/codeql.yml
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
 
-      - name: Install dependencies
-        working-directory: ./backend
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install pytest pytest-asyncio pytest-cov black flake8 mypy
-
-      - name: Run Black (code formatting check)
-        working-directory: ./backend
-        run: black . --check
-
-      - name: Run Flake8 (linting)
-        working-directory: ./backend
-        run: flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-
-      - name: Run MyPy (type checking)
-        working-directory: ./backend
-        run: mypy . --ignore-missing-imports || true
-
-      - name: Run tests
-        working-directory: ./backend
-        run: pytest --cov=. --cov-report=xml --cov-report=html
-        continue-on-error: true
-
-      - name: Upload coverage reports
-        uses: codecov/codecov-action@v3
-        with:
-          file: ./backend/coverage.xml
-          flags: backend
-          name: backend-coverage
-        continue-on-error: true
-
-  frontend-lint-and-test:
-    name: Frontend - Lint & Test
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
-          cache-dependency-path: ./web/package-lock.json
-
-      - name: Install dependencies
-        working-directory: ./web
-        run: npm ci
-
-      - name: Run ESLint
-        working-directory: ./web
-        run: npm run lint
-
-      - name: Run TypeScript type check
-        working-directory: ./web
-        run: npm run typecheck
-
-      - name: Run tests
-        working-directory: ./web
-        run: npm test
-        continue-on-error: true
-
-      - name: Build
-        working-directory: ./web
-        run: npm run build
-
-  security-scan:
-    name: Security Scan
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-
-      - name: Install Safety
-        run: pip install safety
-
-      - name: Run Safety check (Python dependencies)
-        working-directory: ./backend
-        run: safety check --file requirements.txt --output text
-        continue-on-error: true
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-
-      - name: Install frontend dependencies
-        working-directory: ./web
-        run: npm ci
-
-      - name: Run npm audit
-        working-directory: ./web
-        run: npm audit --audit-level=moderate
-        continue-on-error: true
-
+  # ── 3. Dependency review (PRs only) ─────────────────────────────────────
   dependency-review:
     name: Dependency Review
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
-    
+    permissions:
+      contents: read
+      pull-requests: write
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      
+
       - name: Dependency Review
         uses: actions/dependency-review-action@v4
         with:
-          fail-on-severity: moderate
+          fail-on-severity: high
+          comment-summary-in-pr: always
 
+  # ── 4. Gate — all required checks must pass ──────────────────────────────
   all-checks-passed:
     name: All Checks Passed
-    needs: [backend-lint-and-test, frontend-lint-and-test, security-scan]
+    needs: [ ci, codeql ]
     runs-on: ubuntu-latest
     if: always()
-    
+    permissions:
+      contents: read
+
     steps:
-      - name: Check if all jobs succeeded
+      - name: Verify all required jobs succeeded
         run: |
-          if [ "${{ needs.backend-lint-and-test.result }}" == "success" ] && \
-             [ "${{ needs.frontend-lint-and-test.result }}" == "success" ] && \
-             [ "${{ needs.security-scan.result }}" == "success" ]; then
-            echo "All checks passed!"
+          ci_result="${{ needs.ci.result }}"
+          codeql_result="${{ needs.codeql.result }}"
+
+          echo "CI result    : $ci_result"
+          echo "CodeQL result: $codeql_result"
+
+          # CodeQL is "skipped" when all changed files match paths-ignore in
+          # codeql.yml (e.g. docs-only PRs) — that is an acceptable outcome.
+          if [[ "$ci_result" == "success" && \
+                ( "$codeql_result" == "success" || "$codeql_result" == "skipped" ) ]]; then
+            echo "✅ All required checks passed — PR is eligible for merge."
             exit 0
           else
-            echo "Some checks failed!"
+            echo "❌ One or more required checks failed. Merge blocked."
             exit 1
           fi
