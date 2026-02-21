@@ -42,13 +42,21 @@ permissions:
   contents: write
 
 jobs:
+  # ── No-op: shown when GitHub evaluates this file on push (non-workflow_dispatch)
+  # GitHub creates workflow run records for ALL workflow files on push, even for
+  # workflow_dispatch-only workflows. Without this job the run shows "failure"
+  # (0 jobs). This job provides a clean "success" result for non-manual runs.
+  not-manual:
+    name: Manual trigger required
+    runs-on: ubuntu-latest
+    if: github.event_name != 'workflow_dispatch'
+    permissions: {}
+    steps:
+      - run: echo "ℹ️ This workflow is for manual use only. Trigger it via Actions → 'Setup Repository Branch Protection' → Run workflow."
+
   setup-branch-protection:
     name: Configure Branch Protection
     runs-on: ubuntu-latest
-    # Safety guard: only run when explicitly triggered via workflow_dispatch.
-    # This prevents a spurious "failure" entry when GitHub evaluates the file
-    # on push events (GitHub creates run records for all workflow files it
-    # detects, even when their triggers don't match the current event).
     if: github.event_name == 'workflow_dispatch'
 
     steps:
