@@ -967,9 +967,13 @@ def _preprocess_instructions(instructions: str) -> str:
     for q in quoted:
         # Extract topic: "about TOPIC" pattern
         if not topic:
+            # Strip trailing whitespace so the `$` anchor at the end of the
+            # pattern matches the real end of the string without whitespace
+            # backtracking (avoids polynomial ReDoS on crafted inputs).
+            q_stripped = q.strip()
             m = re.search(
-                r"\babout\s+([^\n]{1,200}?)(?:\s+with\b|\s+using\b|\s+and\b|\s*$)",
-                q,
+                r"\babout\s+([^\n]{1,200}?)(?:\s+with\b|\s+using\b|\s+and\b|$)",
+                q_stripped,
                 re.IGNORECASE,
             )
             if m:

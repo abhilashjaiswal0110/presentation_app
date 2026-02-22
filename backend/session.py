@@ -158,11 +158,29 @@ class SessionManager:
                 self._sessions[session_id] = session
             return session
 
+    def _resolve_safe_path(self, session_id: str) -> Optional[Path]:
+        """Return the session directory resolved strictly inside SESSIONS_DIR.
+
+        Uses resolve() + relative_to() so that any path-traversal attempt
+        (e.g. session_id containing '..' or symlinks escaping the root) is
+        rejected before the path is ever passed to open().
+        """
+        candidate = (SESSIONS_DIR / session_id).resolve()
+        try:
+            candidate.relative_to(SESSIONS_DIR.resolve())
+            return candidate
+        except ValueError:
+            return None
+
     def _save_to_disk(self, session: PresentationSession):
         """Save session data to JSON file."""
         if not _SESSION_ID_RE.match(session.session_id):
             raise ValueError(f"Invalid session ID: {session.session_id!r}")
-        session_dir = SESSIONS_DIR / session.session_id
+        session_dir = self._resolve_safe_path(session.session_id)
+        if session_dir is None:
+            raise ValueError(
+                f"Session ID resolves outside data directory: {session.session_id!r}"
+            )
         session_dir.mkdir(exist_ok=True)
 
         data_path = session_dir / "session.json"
@@ -172,9 +190,13 @@ class SessionManager:
     def _load_from_disk(self, session_id: str) -> Optional[PresentationSession]:
         """Load session data from JSON file."""
         if not _SESSION_ID_RE.match(session_id):
-            logger.warning(f"Rejected invalid session ID: {session_id!r}")
+            logger.warning("Rejected invalid session ID: %r", session_id)
             return None
-        data_path = SESSIONS_DIR / session_id / "session.json"
+        session_dir = self._resolve_safe_path(session_id)
+        if session_dir is None:
+            logger.warning("Session ID resolves outside data directory: %r", session_id)
+            return None
+        data_path = session_dir / "session.json"
         if not data_path.exists():
             return None
 
@@ -183,7 +205,7 @@ class SessionManager:
                 data = json.load(f)
             return PresentationSession.from_dict(data)
         except Exception as e:
-            logger.error(f"Error loading session {session_id}: {e}")
+            logger.error("Error loading session %r: %s", session_id, e)
             return None
 
     def _save_to_db(self, session: PresentationSession):

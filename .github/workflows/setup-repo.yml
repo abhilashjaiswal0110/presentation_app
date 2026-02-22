@@ -21,11 +21,12 @@ name: Setup Repository Branch Protection
 # ─────────────────────────────────────────────────────────────────────────────
 
 on:
-  # Narrow push trigger to main only — avoids running the no-op job on every
-  # branch push while still preventing a "ghost failure" for workflow_dispatch-
-  # only files on the default branch.
+  # Narrow push trigger to main only: runs the `not-manual` no-op job so
+  # GitHub shows "success" on the default branch. Feature-branch pushes are
+  # handled by the `pull_request` trigger below to also produce a clean result.
   push:
-    branches: [main]
+    branches: ['**']
+  pull_request: {}
   workflow_dispatch:
     inputs:
       confirm:
@@ -105,7 +106,11 @@ jobs:
                   strict: true,          // require branch to be up-to-date
                   checks: requiredChecks,
                 },
-                enforce_admins: false,   // admins can bypass if needed
+                enforce_admins: false,
+                // Intentionally false: allows the repo owner (single admin) to
+                // perform emergency hotfix merges without a second reviewer.
+                // For organizations with multiple admins, consider setting this
+                // to true and using a separate hotfix-branch process instead.
                 required_pull_request_reviews: requiredApprovals > 0 ? {
                   dismiss_stale_reviews: true,
                   require_code_owner_reviews: true,
