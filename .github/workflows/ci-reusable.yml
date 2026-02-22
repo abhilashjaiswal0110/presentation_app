@@ -104,11 +104,12 @@ jobs:
         continue-on-error: true
 
       - name: Upload coverage to Codecov
-        # codecov-token is optional. If not set, the upload step fails silently
-        # (continue-on-error: true) — this is expected for forks and repos that
-        # haven't connected to Codecov yet. Set the CODECOV_TOKEN secret to
-        # enable coverage tracking: https://docs.codecov.com/docs/quick-start
-        if: inputs.run-backend-tests && secrets.codecov-token != ''
+        # codecov-token is optional. If the CODECOV_TOKEN secret is not set,
+        # this step fails silently (continue-on-error: true) — expected for
+        # forks and repos not yet connected to Codecov.
+        # To enable: add CODECOV_TOKEN in repo Settings → Secrets and variables
+        # → Actions. See https://docs.codecov.com/docs/quick-start
+        if: inputs.run-backend-tests
         uses: codecov/codecov-action@v4
         with:
           token: ${{ secrets.codecov-token }}
