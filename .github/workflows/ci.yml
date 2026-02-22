@@ -48,6 +48,11 @@ jobs:
     name: Dependency Review
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
+    # Informational only — requires "Dependency graph" feature to be enabled in
+    # repo settings (Security → Code security and analysis → Dependency graph).
+    # continue-on-error: true ensures this doesn't block the CI gate when the
+    # feature is not enabled (e.g. on forks).
+    continue-on-error: true
     permissions:
       contents: read
       pull-requests: write
@@ -60,12 +65,16 @@ jobs:
         uses: actions/dependency-review-action@v4
         with:
           fail-on-severity: high
-          comment-summary-in-pr: always
+          # Only comment when vulnerabilities are found — avoids noise on clean PRs.
+          comment-summary-in-pr: on-failure
 
   # ── 4. Gate — all required checks must pass ──────────────────────────────
   all-checks-passed:
     name: All Checks Passed
-    needs: [ ci, codeql ]
+    # dependency-review uses continue-on-error, so its result is always "success"
+    # (even if steps failed). Including it here surfaces its status without
+    # blocking the gate on forks where the dependency graph is not enabled.
+    needs: [ ci, codeql, dependency-review ]
     runs-on: ubuntu-latest
     if: always()
     permissions:
@@ -76,14 +85,18 @@ jobs:
         run: |
           ci_result="${{ needs.ci.result }}"
           codeql_result="${{ needs.codeql.result }}"
+          dep_review_result="${{ needs.dependency-review.result }}"
 
-          echo "CI result    : $ci_result"
-          echo "CodeQL result: $codeql_result"
+          echo "CI result               : $ci_result"
+          echo "CodeQL result           : $codeql_result"
+          echo "Dependency review result: $dep_review_result"
 
-          # CodeQL is "skipped" when all changed files match paths-ignore in
-          # codeql.yml (e.g. docs-only PRs) — that is an acceptable outcome.
+          # CodeQL is "skipped" when all changed files match paths-ignore — acceptable.
+          # dependency-review is "skipped" on push events (PR-only) — acceptable.
+          # dependency-review uses continue-on-error so its result is always "success".
           if [[ "$ci_result" == "success" && \
-                ( "$codeql_result" == "success" || "$codeql_result" == "skipped" ) ]]; then
+                ( "$codeql_result" == "success" || "$codeql_result" == "skipped" ) && \
+                ( "$dep_review_result" == "success" || "$dep_review_result" == "skipped" ) ]]; then
             echo "✅ All required checks passed — PR is eligible for merge."
             exit 0
           else

@@ -171,7 +171,10 @@ jobs:
 
       - name: pip-audit — Python dependency vulnerabilities
         working-directory: ${{ inputs.backend-dir }}
-        run: pip-audit -r requirements.txt --format=markdown || true
+        run: pip-audit -r requirements.txt --format=markdown
+        # continue-on-error: actual failures (network errors, parse errors) are
+        # visible in the step log; the job still proceeds to the npm audit step.
+        continue-on-error: true
 
       - uses: actions/setup-node@v4
         with:
@@ -183,7 +186,8 @@ jobs:
 
       - name: npm audit — frontend dependency vulnerabilities
         working-directory: ${{ inputs.frontend-dir }}
-        run: npm audit --audit-level=high || true
+        run: npm audit --audit-level=high
+        continue-on-error: true
 
   # ── Gate ──────────────────────────────────────────────────────────────────
   all-checks:

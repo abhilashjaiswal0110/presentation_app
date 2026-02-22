@@ -32,12 +32,20 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_URL: ${{ github.event.pull_request.html_url }}
-        # `gh pr merge --auto` queues the merge; GitHub will complete it once
-        # all required checks pass.  --squash keeps the history clean.
         run: |
-          gh pr merge --auto --squash "$PR_URL" \
-            --subject "$(gh pr view "$PR_URL" --json title -q .title)" \
-            || echo "Auto-merge already enabled or merge not possible yet."
+          set -euo pipefail
+          title="$(gh pr view "$PR_URL" --json title -q .title)"
+          if ! output="$(gh pr merge --auto --squash "$PR_URL" --subject "$title" 2>&1)"; then
+            echo "$output" >&2
+            if echo "$output" | grep -qi 'auto-merge.*already enabled'; then
+              echo "Auto-merge is already enabled for this pull request; continuing."
+            elif echo "$output" | grep -qi 'pull request is not mergeable'; then
+              echo "Auto-merge could not be enabled yet because the pull request is not currently mergeable."
+            else
+              echo "Failed to enable auto-merge: unexpected error from gh CLI." >&2
+              exit 1
+            fi
+          fi
 
   # ──────────────────────────────────────────────────────────────
   # Dependabot: automatically approve patch/minor updates so the

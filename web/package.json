@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "test": "echo 'No test suite configured yet' && exit 0"
+    "test": "if find . \\( -name '*.test.js' -o -name '*.test.ts' -o -name '*.test.tsx' \\) -not -path './node_modules/*' | grep -q .; then echo 'Test files detected but no test runner configured. Please update the npm test script.'; exit 1; else echo 'No test suite configured yet'; exit 0; fi"
   },
   "dependencies": {
     "@tailwindcss/postcss": "^4.1.18",

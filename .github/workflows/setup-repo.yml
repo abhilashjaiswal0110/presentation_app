@@ -21,12 +21,11 @@ name: Setup Repository Branch Protection
 # ─────────────────────────────────────────────────────────────────────────────
 
 on:
-  # push and pull_request triggers are required so that GitHub can actually
-  # execute the `not-manual` no-op job (see below) instead of creating a ghost
-  # "failure" run entry for a workflow_dispatch-only file.
+  # Narrow push trigger to main only — avoids running the no-op job on every
+  # branch push while still preventing a "ghost failure" for workflow_dispatch-
+  # only files on the default branch.
   push:
-    branches: ['**']
-  pull_request: {}
+    branches: [main]
   workflow_dispatch:
     inputs:
       confirm:
@@ -43,9 +42,8 @@ on:
         default: 'All Checks Passed,CodeQL Security Analysis'
 
 permissions:
-  # Needs admin write to modify branch protection
-  administration: write
-  contents: write
+  # Minimal top-level permissions — elevated permissions are granted at job level.
+  contents: read
 
 jobs:
   # ── No-op: shown when GitHub evaluates this file on push (non-workflow_dispatch)
@@ -64,6 +62,10 @@ jobs:
     name: Configure Branch Protection
     runs-on: ubuntu-latest
     if: github.event_name == 'workflow_dispatch'
+    # Elevated permissions only on the job that needs them.
+    permissions:
+      administration: write
+      contents: write
 
     steps:
       - name: Validate confirmation input
@@ -179,6 +181,34 @@ jobs:
               core.warning(`Could not update repository settings: ${e.message}`);
             }
 
+      - name: Create PR size labels
+        uses: actions/github-script@v7
+        continue-on-error: true
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const labels = {
+              'size/XS': { color: '3cbf00', description: 'PR changes ≤ 10 lines' },
+              'size/S':  { color: '5d9801', description: 'PR changes ≤ 50 lines' },
+              'size/M':  { color: 'e6b800', description: 'PR changes ≤ 200 lines' },
+              'size/L':  { color: 'e65c00', description: 'PR changes ≤ 500 lines' },
+              'size/XL': { color: 'cc0000', description: 'PR changes > 500 lines' },
+            };
+            for (const [name, { color, description }] of Object.entries(labels)) {
+              try {
+                await github.rest.issues.createLabel({
+                  owner: context.repo.owner, repo: context.repo.repo, name, color, description,
+                });
+                core.info(`Created label: ${name}`);
+              } catch (e) {
+                if (e.status === 422) {
+                  core.info(`Label already exists: ${name}`);
+                } else {
+                  core.warning(`Could not create label ${name}: ${e.message}`);
+                }
+              }
+            }
+
       - name: Summary
         run: |
           echo "## ✅ Repository Setup Complete" >> $GITHUB_STEP_SUMMARY
@@ -192,5 +222,6 @@ jobs:
           echo "| Auto-merge allowed | ✅ |" >> $GITHUB_STEP_SUMMARY
           echo "| Delete branch on merge | ✅ |" >> $GITHUB_STEP_SUMMARY
           echo "| Vulnerability alerts | ✅ |" >> $GITHUB_STEP_SUMMARY
+          echo "| Size labels created | ✅ |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "> Next step: run the \`setup-repo.yml\` workflow in any other repository to apply the same ruleset." >> $GITHUB_STEP_SUMMARY

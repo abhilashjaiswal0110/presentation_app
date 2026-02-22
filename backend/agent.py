@@ -575,8 +575,8 @@ def _extract_slide_content_from_html(html: str) -> str:
     # Extract paragraphs
     paragraphs = re.findall(r"<p[^>]*>(.*?)</p>", html, re.IGNORECASE | re.DOTALL)
 
-    # Extract div content that might contain text (for structured content)
-    divs_with_text = re.findall(r"<div[^>]*>([^<]+)</div>", html, re.IGNORECASE)
+    # Extract div content that might contain text (for structured content) — unused
+    # divs_with_text removed: variable was assigned but never read
 
     # Build content string
     content_parts = []
@@ -968,7 +968,7 @@ def _preprocess_instructions(instructions: str) -> str:
         # Extract topic: "about TOPIC" pattern
         if not topic:
             m = re.search(
-                r"\babout\s+(.+?)(?:\s+with\b|\s+using\b|\s+and\b|\s*$)",
+                r"\babout\s+([^\n]{1,200}?)(?:\s+with\b|\s+using\b|\s+and\b|\s*$)",
                 q,
                 re.IGNORECASE,
             )
@@ -978,7 +978,7 @@ def _preprocess_instructions(instructions: str) -> str:
         # Extract requested slide count: "2-slide", "3 slide" etc.
         # Note: Currently only supports numeric digits, not spelled-out numbers
         if not slide_count:
-            m = re.search(r"(\d+)[- ]slide", q, re.IGNORECASE)
+            m = re.search(r"(\d{1,5})[- ]slide", q, re.IGNORECASE)
             if m:
                 slide_count = int(m.group(1))
 
@@ -1046,7 +1046,9 @@ def _preprocess_instructions(instructions: str) -> str:
         elif re.search(r"\badd a slide about\b", lower) or re.search(
             r"\bslide about\b", lower
         ):
-            m = re.search(r"(?:slide about|about)\s+(.+?)(?:\s+with\b|\s*$)", lower)
+            m = re.search(
+                r"(?:slide about|about)\s+([^\n]{1,200}?)(?:\s+with\b|\s*$)", lower
+            )
             subtopic = m.group(1).strip() if m else q
             has_bullets = "bullet" in lower or "points" in lower or "list" in lower
             fmt = " as a bullet-point list" if has_bullets else ""
@@ -1255,13 +1257,11 @@ async def run_agent_stream(
         import re
 
         slide_count_match = re.search(
-            r"(\d+)[- ]slide", raw_instructions, re.IGNORECASE
+            r"(\d{1,5})[- ]slide", raw_instructions, re.IGNORECASE
         )
         min_slides = int(slide_count_match.group(1)) if slide_count_match else 1
         min_slides_phrase = (
-            f"at least {min_slides} time{'s' if min_slides > 1 else ''}"
-            if min_slides > 1
-            else "at least once"
+            f"at least {min_slides} times" if min_slides > 1 else "at least once"
         )
 
         retry_text = (

@@ -46,9 +46,7 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const pr = context.payload.pull_request;
-            const additions = pr.additions;
-            const deletions = pr.deletions;
-            const total = additions + deletions;
+            const total = pr.additions + pr.deletions;
 
             let sizeLabel;
             if (total <= 10)        sizeLabel = 'size/XS';
@@ -58,30 +56,9 @@ jobs:
             else                    sizeLabel = 'size/XL';
 
             const sizeLabels = ['size/XS', 'size/S', 'size/M', 'size/L', 'size/XL'];
-            const labelColors = {
-              'size/XS': '3cbf00',
-              'size/S':  '5d9801',
-              'size/M':  'e6b800',
-              'size/L':  'e65c00',
-              'size/XL': 'cc0000',
-            };
 
-            // Ensure labels exist in repo
-            for (const [name, color] of Object.entries(labelColors)) {
-              try {
-                await github.rest.issues.createLabel({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  name,
-                  color,
-                });
-              } catch (e) {
-                // Label already exists — ignore 422
-                if (e.status !== 422) throw e;
-              }
-            }
-
-            // Remove existing size labels, then add the correct one
+            // Size labels are created by setup-repo.yml; no per-PR creation needed.
+            // Remove any stale size label then apply the correct one.
             const currentLabels = await github.rest.issues.listLabelsOnIssue({
               owner: context.repo.owner,
               repo: context.repo.repo,

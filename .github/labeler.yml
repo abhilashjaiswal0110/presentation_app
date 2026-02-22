@@ -13,7 +13,11 @@ documentation:
   - changed-files:
     - any-glob-to-any-file:
         - 'docs/**'
-        - '*.md'
+        - 'README.md'
+        - 'CONTRIBUTING.md'
+        - 'CODE_OF_CONDUCT.md'
+        - 'CHANGELOG.md'
+        - 'SECURITY.md'
         - '.github/ISSUE_TEMPLATE/**'
         - '.github/PULL_REQUEST_TEMPLATE.md'
 

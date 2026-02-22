@@ -7,6 +7,7 @@ and file system storage for presentation data.
 
 import json
 import os
+import re
 import sqlite3
 import threading
 import uuid
@@ -26,6 +27,10 @@ SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
 
 # SQLite database path
 DB_PATH = DATA_DIR / "sessions.db"
+
+# Only allow UUID-like session IDs (alphanumeric + hyphens, bounded length).
+# This prevents path-traversal attacks when session_id is used in file paths.
+_SESSION_ID_RE = re.compile(r"^[0-9a-zA-Z_-]{1,64}$")
 
 
 class PresentationSession:
@@ -155,6 +160,8 @@ class SessionManager:
 
     def _save_to_disk(self, session: PresentationSession):
         """Save session data to JSON file."""
+        if not _SESSION_ID_RE.match(session.session_id):
+            raise ValueError(f"Invalid session ID: {session.session_id!r}")
         session_dir = SESSIONS_DIR / session.session_id
         session_dir.mkdir(exist_ok=True)
 
@@ -164,6 +171,9 @@ class SessionManager:
 
     def _load_from_disk(self, session_id: str) -> Optional[PresentationSession]:
         """Load session data from JSON file."""
+        if not _SESSION_ID_RE.match(session_id):
+            logger.warning(f"Rejected invalid session ID: {session_id!r}")
+            return None
         data_path = SESSIONS_DIR / session_id / "session.json"
         if not data_path.exists():
             return None

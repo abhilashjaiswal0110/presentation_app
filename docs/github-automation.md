@@ -74,7 +74,10 @@ on:
 
 jobs:
   ci:
-    uses: abhilashjaiswal0110/presentation_app/.github/workflows/ci-reusable.yml@main
+    # Pin to an immutable commit SHA (not a branch name) to prevent supply-chain
+    # risk from a force-push or branch compromise.
+    # Get the latest SHA from: https://github.com/abhilashjaiswal0110/presentation_app/commits/main
+    uses: abhilashjaiswal0110/presentation_app/.github/workflows/ci-reusable.yml@<COMMIT_SHA>
     with:
       python-version: '3.12'
       node-version: '20'
@@ -83,6 +86,16 @@ jobs:
     secrets:
       codecov-token: ${{ secrets.CODECOV_TOKEN }}
 ```
+
+> ⚠️ **Supply-chain safety**: Always pin external `uses:` references to an immutable
+> commit SHA or a signed release tag rather than a branch name like `@main`.
+> A branch can be force-pushed or compromised; a SHA cannot.
+>
+> Get the current SHA:
+> ```bash
+> git ls-remote https://github.com/abhilashjaiswal0110/presentation_app.git main
+> ```
+> or copy it from the [repository commits page](https://github.com/abhilashjaiswal0110/presentation_app/commits/main).
 
 > **Note**: The calling repository must have access to this repository.
 > For a private repo, make the workflow callable across org or use a copy.
@@ -99,7 +112,8 @@ Can also be called as a reusable workflow:
 ```yaml
 jobs:
   security:
-    uses: abhilashjaiswal0110/presentation_app/.github/workflows/codeql.yml@main
+    # Pin to an immutable commit SHA — see supply-chain note above.
+    uses: abhilashjaiswal0110/presentation_app/.github/workflows/codeql.yml@<COMMIT_SHA>
     permissions:
       actions: read
       contents: read
