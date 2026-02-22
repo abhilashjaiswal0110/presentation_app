@@ -183,8 +183,9 @@ class SessionManager:
             )
         session_dir.mkdir(exist_ok=True)
 
+        # session_dir verified by _resolve_safe_path() — safe to write
         data_path = session_dir / "session.json"
-        with open(data_path, "w") as f:
+        with open(data_path, "w", encoding="utf-8") as f:
             json.dump(session.to_dict(), f, indent=2)
 
     def _load_from_disk(self, session_id: str) -> Optional[PresentationSession]:
@@ -201,7 +202,8 @@ class SessionManager:
             return None
 
         try:
-            with open(data_path, "r") as f:
+            # session_dir verified by _resolve_safe_path() — safe to read
+            with open(data_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
             return PresentationSession.from_dict(data)
         except Exception as e:
