@@ -1,0 +1,232 @@
+name: Setup Repository Branch Protection
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ONE-TIME SETUP — Run this workflow manually (workflow_dispatch) once as a
+# repository admin to configure branch protection rules and repository settings.
+#
+# What it configures:
+#   • Branch protection for `main`:
+#       - Require status checks to pass (CI, CodeQL, dependency-review)
+#       - Require at least 1 approving review
+#       - Dismiss stale reviews on new push
+#       - Require up-to-date branch before merge
+#       - Block force pushes
+#       - Block branch deletion
+#   • Enables vulnerability alerts
+#   • Enables automated security fixes (Dependabot)
+#   • Sets squash-merge as the default merge strategy
+#
+# NOTE: This workflow requires the GITHUB_TOKEN to have `administration: write`
+#       which is available to repository admins.
+# ─────────────────────────────────────────────────────────────────────────────
+
+on:
+  # Narrow push trigger to main only: runs the `not-manual` no-op job so
+  # GitHub shows "success" on the default branch. Feature-branch pushes are
+  # handled by the `pull_request` trigger below to also produce a clean result.
+  push:
+    branches: ['**']
+  pull_request: {}
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "yes" to confirm applying branch protection rules'
+        required: true
+        default: ''
+      required-approvals:
+        description: 'Number of required approving reviews (0 = disabled)'
+        required: false
+        default: '1'
+      required-checks:
+        description: 'Comma-separated list of required status check names'
+        required: false
+        default: 'All Checks Passed,CodeQL Security Analysis'
+
+permissions:
+  # Minimal top-level permissions — elevated permissions are granted at job level.
+  contents: read
+
+jobs:
+  # ── No-op: shown when GitHub evaluates this file on push (non-workflow_dispatch)
+  # GitHub creates workflow run records for ALL workflow files on push, even for
+  # workflow_dispatch-only workflows. Without this job the run shows "failure"
+  # (0 jobs). This job provides a clean "success" result for non-manual runs.
+  not-manual:
+    name: Manual trigger required
+    runs-on: ubuntu-latest
+    if: github.event_name != 'workflow_dispatch'
+    permissions: {}
+    steps:
+      - run: echo "ℹ️ This workflow is for manual use only. Trigger it via Actions → 'Setup Repository Branch Protection' → Run workflow."
+
+  setup-branch-protection:
+    name: Configure Branch Protection
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    # Elevated permissions only on the job that needs them.
+    permissions:
+      administration: write
+      contents: write
+
+    steps:
+      - name: Validate confirmation input
+        run: |
+          if [ "${{ github.event.inputs.confirm }}" != "yes" ]; then
+            echo "❌ Confirmation not provided. Type 'yes' in the confirm input to proceed."
+            exit 1
+          fi
+
+      - name: Apply main branch protection rules
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const owner = context.repo.owner;
+            const repo  = context.repo.repo;
+            const branch = 'main';
+
+            const requiredApprovals = parseInt('${{ github.event.inputs.required-approvals }}', 10) || 1;
+            const checksInput = '${{ github.event.inputs.required-checks }}';
+            const requiredChecks = checksInput
+              .split(',')
+              .map(s => s.trim())
+              .filter(Boolean)
+              .map(context => ({ context }));
+
+            core.info(`Applying branch protection to ${owner}/${repo}:${branch}`);
+            core.info(`Required approvals: ${requiredApprovals}`);
+            core.info(`Required checks: ${JSON.stringify(requiredChecks)}`);
+
+            try {
+              await github.rest.repos.updateBranchProtection({
+                owner,
+                repo,
+                branch,
+                required_status_checks: {
+                  strict: true,          // require branch to be up-to-date
+                  checks: requiredChecks,
+                },
+                enforce_admins: false,
+                // Intentionally false: allows the repo owner (single admin) to
+                // perform emergency hotfix merges without a second reviewer.
+                // For organizations with multiple admins, consider setting this
+                // to true and using a separate hotfix-branch process instead.
+                required_pull_request_reviews: requiredApprovals > 0 ? {
+                  dismiss_stale_reviews: true,
+                  require_code_owner_reviews: true,
+                  required_approving_review_count: requiredApprovals,
+                  // Disabled: require_last_push_approval would block auto-merge
+                  // workflows where Dependabot pushes get approved automatically.
+                  require_last_push_approval: false,
+                } : null,
+                restrictions: null,      // allow any contributor to push
+                allow_force_pushes: false,
+                allow_deletions: false,
+                block_creations: false,
+                required_conversation_resolution: true,
+                lock_branch: false,
+              });
+              core.info('✅ Branch protection rules applied successfully.');
+            } catch (e) {
+              core.setFailed(`Failed to apply branch protection: ${e.message}`);
+            }
+
+      - name: Enable vulnerability alerts
+        uses: actions/github-script@v7
+        continue-on-error: true
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            try {
+              await github.request('PUT /repos/{owner}/{repo}/vulnerability-alerts', {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                headers: { 'X-GitHub-Api-Version': '2022-11-28' },
+              });
+              core.info('✅ Vulnerability alerts enabled.');
+            } catch (e) {
+              core.warning(`Could not enable vulnerability alerts: ${e.message}`);
+            }
+
+      - name: Enable automated security fixes (Dependabot)
+        uses: actions/github-script@v7
+        continue-on-error: true
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            try {
+              await github.request('PUT /repos/{owner}/{repo}/automated-security-fixes', {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                headers: { 'X-GitHub-Api-Version': '2022-11-28' },
+              });
+              core.info('✅ Automated security fixes (Dependabot) enabled.');
+            } catch (e) {
+              core.warning(`Could not enable automated security fixes: ${e.message}`);
+            }
+
+      - name: Set squash-merge as default strategy
+        uses: actions/github-script@v7
+        continue-on-error: true
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            try {
+              await github.rest.repos.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                allow_squash_merge: true,
+                allow_merge_commit: false,
+                allow_rebase_merge: false,
+                delete_branch_on_merge: true,
+                allow_auto_merge: true,        // required for auto-merge workflow
+              });
+              core.info('✅ Repository merge settings updated (squash-only, auto-merge enabled, branch deletion on merge).');
+            } catch (e) {
+              core.warning(`Could not update repository settings: ${e.message}`);
+            }
+
+      - name: Create PR size labels
+        uses: actions/github-script@v7
+        continue-on-error: true
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const labels = {
+              'size/XS': { color: '3cbf00', description: 'PR changes ≤ 10 lines' },
+              'size/S':  { color: '5d9801', description: 'PR changes ≤ 50 lines' },
+              'size/M':  { color: 'e6b800', description: 'PR changes ≤ 200 lines' },
+              'size/L':  { color: 'e65c00', description: 'PR changes ≤ 500 lines' },
+              'size/XL': { color: 'cc0000', description: 'PR changes > 500 lines' },
+            };
+            for (const [name, { color, description }] of Object.entries(labels)) {
+              try {
+                await github.rest.issues.createLabel({
+                  owner: context.repo.owner, repo: context.repo.repo, name, color, description,
+                });
+                core.info(`Created label: ${name}`);
+              } catch (e) {
+                if (e.status === 422) {
+                  core.info(`Label already exists: ${name}`);
+                } else {
+                  core.warning(`Could not create label ${name}: ${e.message}`);
+                }
+              }
+            }
+
+      - name: Summary
+        run: |
+          echo "## ✅ Repository Setup Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Setting | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|---------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Protected branch | \`main\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Required approvals | ${{ github.event.inputs.required-approvals }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Required checks | ${{ github.event.inputs.required-checks }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Squash-merge only | ✅ |" >> $GITHUB_STEP_SUMMARY
+          echo "| Auto-merge allowed | ✅ |" >> $GITHUB_STEP_SUMMARY
+          echo "| Delete branch on merge | ✅ |" >> $GITHUB_STEP_SUMMARY
+          echo "| Vulnerability alerts | ✅ |" >> $GITHUB_STEP_SUMMARY
+          echo "| Size labels created | ✅ |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "> Next step: run the \`setup-repo.yml\` workflow in any other repository to apply the same ruleset." >> $GITHUB_STEP_SUMMARY

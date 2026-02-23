@@ -1,0 +1,56 @@
+# Auto-labeler configuration for actions/labeler@v5
+# Adds labels to PRs based on which files changed.
+
+backend:
+  - changed-files:
+    - any-glob-to-any-file: 'backend/**'
+
+frontend:
+  - changed-files:
+    - any-glob-to-any-file: 'web/**'
+
+documentation:
+  - changed-files:
+    - any-glob-to-any-file:
+        - 'docs/**'
+        - 'README.md'
+        - 'CONTRIBUTING.md'
+        - 'CODE_OF_CONDUCT.md'
+        - 'CHANGELOG.md'
+        - 'SECURITY.md'
+        - '.github/ISSUE_TEMPLATE/**'
+        - '.github/PULL_REQUEST_TEMPLATE.md'
+
+dependencies:
+  - changed-files:
+    - any-glob-to-any-file:
+        - 'backend/requirements.txt'
+        - 'web/package.json'
+        - 'web/package-lock.json'
+        - 'backend/pptx_converter/package.json'
+        - 'backend/pptx_converter/package-lock.json'
+        - '.github/dependabot.yml'
+
+github-actions:
+  - changed-files:
+    - any-glob-to-any-file: '.github/workflows/**'
+
+security:
+  - changed-files:
+    - any-glob-to-any-file:
+        - 'SECURITY.md'
+        - '.github/workflows/codeql.yml'
+        - '.github/workflows/dependency-review.yml'
+
+configuration:
+  - changed-files:
+    - any-glob-to-any-file:
+        - '*.yml'
+        - '*.yaml'
+        - '*.json'
+        - '*.toml'
+        - '*.ini'
+        - '*.cfg'
+        - '.env.example'
+        - '.editorconfig'
+        - '.gitignore'

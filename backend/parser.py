@@ -17,6 +17,7 @@ TMP_DIR.mkdir(parents=True, exist_ok=True)
 # Apply nest_asyncio to allow nested event loops (needed for LlamaParse)
 try:
     import nest_asyncio
+
     nest_asyncio.apply()
 except ImportError:
     pass  # nest_asyncio not installed, some features may not work
@@ -26,6 +27,7 @@ logger = logging.getLogger(__name__)
 # Check if LlamaParse is available
 try:
     from llama_cloud_services import LlamaParse
+
     LLAMAPARSE_AVAILABLE = True
 except ImportError:
     LLAMAPARSE_AVAILABLE = False
@@ -33,8 +35,7 @@ except ImportError:
 
 
 async def parse_files_stream(
-    files: list[dict],
-    parse_mode: str = "cost_effective"
+    files: list[dict], parse_mode: str = "cost_effective"
 ) -> AsyncGenerator[dict, None]:
     """
     Parse uploaded files and stream progress.
@@ -63,7 +64,7 @@ async def parse_files_stream(
             "current": idx + 1,
             "total": total,
             "filename": filename,
-            "status": "parsing"
+            "status": "parsing",
         }
 
         try:
@@ -74,28 +75,21 @@ async def parse_files_stream(
                 # Fallback to basic parsing
                 parsed_text = parse_basic(content, filename, content_type)
 
-            results.append({
-                "filename": filename,
-                "text": parsed_text,
-                "success": True
-            })
+            results.append({"filename": filename, "text": parsed_text, "success": True})
 
             yield {
                 "type": "progress",
                 "current": idx + 1,
                 "total": total,
                 "filename": filename,
-                "status": "complete"
+                "status": "complete",
             }
 
         except Exception as e:
             logger.error(f"Error parsing {filename}: {e}")
-            results.append({
-                "filename": filename,
-                "text": "",
-                "success": False,
-                "error": str(e)
-            })
+            results.append(
+                {"filename": filename, "text": "", "success": False, "error": str(e)}
+            )
 
             yield {
                 "type": "progress",
@@ -103,34 +97,31 @@ async def parse_files_stream(
                 "total": total,
                 "filename": filename,
                 "status": "error",
-                "error": str(e)
+                "error": str(e),
             }
 
     yield {"type": "complete", "results": results}
 
 
-async def parse_with_llama(
-    content: bytes,
-    filename: str,
-    parse_mode: str
-) -> str:
+async def parse_with_llama(content: bytes, filename: str, parse_mode: str) -> str:
     """Parse file using LlamaParse."""
     from llama_cloud_services import LlamaParse
 
     parser = LlamaParse(
         result_type="markdown",
-        parsing_instruction="Extract all text content for use in presentation slides."
+        parsing_instruction="Extract all text content for use in presentation slides.",
     )
 
     # Write to temp file in .tmp directory
     # Sanitize filename to prevent path traversal attacks
     import uuid
     from pathlib import Path as PathLib
+
     temp_id = uuid.uuid4().hex[:8]
     safe_filename = PathLib(filename).name  # Extract basename only
     temp_path = TMP_DIR / f"parse_{temp_id}_{safe_filename}"
 
-    with open(temp_path, 'wb') as f:
+    with open(temp_path, "wb") as f:
         f.write(content)
 
     try:
@@ -143,14 +134,14 @@ async def parse_with_llama(
 
 def parse_basic(content: bytes, filename: str, content_type: str) -> str:
     """Basic parsing fallback for common formats."""
-    ext = filename.lower().split('.')[-1] if '.' in filename else ''
+    ext = filename.lower().split(".")[-1] if "." in filename else ""
 
     # Plain text files
-    if ext in ['txt', 'md', 'markdown'] or 'text/' in content_type:
+    if ext in ["txt", "md", "markdown"] or "text/" in content_type:
         try:
-            return content.decode('utf-8')
+            return content.decode("utf-8")
         except UnicodeDecodeError:
-            return content.decode('latin-1')
+            return content.decode("latin-1")
 
     # For other formats, return a placeholder
     return f"[Content from {filename} - requires LlamaParse for full extraction]"
@@ -188,7 +179,7 @@ async def parse_template_with_screenshots(
             "text": "",
             "screenshots": [],
             "success": False,
-            "error": "LlamaParse not available for template parsing. Set LLAMA_CLOUD_API_KEY."
+            "error": "LlamaParse not available for template parsing. Set LLAMA_CLOUD_API_KEY.",
         }
 
     try:
@@ -208,11 +199,12 @@ async def parse_template_with_screenshots(
         # Sanitize filename to prevent path traversal attacks
         import uuid
         from pathlib import Path as PathLib
+
         temp_id = uuid.uuid4().hex[:8]
         safe_filename = PathLib(filename).name  # Extract basename only
         temp_path = TMP_DIR / f"template_{temp_id}_{safe_filename}"
 
-        with open(temp_path, 'wb') as f:
+        with open(temp_path, "wb") as f:
             f.write(content)
 
         try:
@@ -221,7 +213,9 @@ async def parse_template_with_screenshots(
 
             # Get text content from markdown documents
             markdown_docs = result.get_markdown_documents(split_by_page=False)
-            text_content = "\n\n".join(doc.text for doc in markdown_docs) if markdown_docs else ""
+            text_content = (
+                "\n\n".join(doc.text for doc in markdown_docs) if markdown_docs else ""
+            )
 
             # Extract screenshots using async method to fetch image data
             screenshots = []
@@ -232,7 +226,7 @@ async def parse_template_with_screenshots(
             logger.info(f"Saving debug screenshots to: {debug_dir}")
 
             # Pattern to match full page screenshots: page_N.jpg (1-indexed)
-            page_screenshot_pattern = re.compile(r'^page_(\d+)\.jpg$')
+            page_screenshot_pattern = re.compile(r"^page_(\d+)\.jpg$")
 
             try:
                 if result.pages:
@@ -241,29 +235,38 @@ async def parse_template_with_screenshots(
                     # Collect only full page screenshots from all pages
                     page_screenshots = []
                     for page_idx, page in enumerate(result.pages):
-                        if hasattr(page, 'images') and page.images:
-                            logger.info(f"Page {page_idx}: found {len(page.images)} images")
+                        if hasattr(page, "images") and page.images:
+                            logger.info(
+                                f"Page {page_idx}: found {len(page.images)} images"
+                            )
                             for img in page.images:
                                 # Handle SDK objects - access .name attribute
-                                img_name = getattr(img, 'name', None)
-                                if img_name is None and hasattr(img, '__getitem__'):
+                                img_name = getattr(img, "name", None)
+                                if img_name is None and hasattr(img, "__getitem__"):
                                     # Fallback to dict access if needed
-                                    img_name = img.get('name') if isinstance(img, dict) else None
+                                    img_name = (
+                                        img.get("name")
+                                        if isinstance(img, dict)
+                                        else None
+                                    )
 
                                 if img_name:
                                     match = page_screenshot_pattern.match(img_name)
                                     if match:
                                         # page_N.jpg is 1-indexed, convert to 0-indexed
                                         page_num = int(match.group(1)) - 1
-                                        page_screenshots.append({
-                                            "page_idx": page_num,
-                                            "name": img_name
-                                        })
-                                        logger.info(f"Found full page screenshot: {img_name} for page {page_num}")
+                                        page_screenshots.append(
+                                            {"page_idx": page_num, "name": img_name}
+                                        )
+                                        logger.info(
+                                            f"Found full page screenshot: {img_name} for page {page_num}"
+                                        )
                         else:
                             logger.info(f"Page {page_idx}: no images found")
 
-                    logger.info(f"Total full page screenshots found: {len(page_screenshots)}")
+                    logger.info(
+                        f"Total full page screenshots found: {len(page_screenshots)}"
+                    )
 
                     # Sort by page index and select representative screenshots (up to 5)
                     page_screenshots.sort(key=lambda x: x["page_idx"])
@@ -283,21 +286,31 @@ async def parse_template_with_screenshots(
                                 if img_data:
                                     # Save to debug directory
                                     debug_path = os.path.join(debug_dir, img_name)
-                                    with open(debug_path, 'wb') as f:
+                                    with open(debug_path, "wb") as f:
                                         f.write(img_data)
                                     logger.info(f"Saved debug image to: {debug_path}")
 
                                     # img_data should be bytes, encode to base64
-                                    img_base64 = base64.b64encode(img_data).decode('utf-8')
-                                    screenshots.append({
-                                        "index": img_info["page_idx"],
-                                        "data": img_base64,
-                                    })
-                                    logger.info(f"Successfully fetched image {img_name} ({len(img_data)} bytes)")
+                                    img_base64 = base64.b64encode(img_data).decode(
+                                        "utf-8"
+                                    )
+                                    screenshots.append(
+                                        {
+                                            "index": img_info["page_idx"],
+                                            "data": img_base64,
+                                        }
+                                    )
+                                    logger.info(
+                                        f"Successfully fetched image {img_name} ({len(img_data)} bytes)"
+                                    )
                                 else:
-                                    logger.warning(f"No data returned for image {img_name}")
+                                    logger.warning(
+                                        f"No data returned for image {img_name}"
+                                    )
                             except Exception as img_err:
-                                logger.warning(f"Could not fetch image {img_name}: {img_err}")
+                                logger.warning(
+                                    f"Could not fetch image {img_name}: {img_err}"
+                                )
                 else:
                     logger.info("No pages in result")
 
@@ -312,7 +325,7 @@ async def parse_template_with_screenshots(
                 "text": text_content,
                 "screenshots": screenshots,
                 "success": True,
-                "error": None
+                "error": None,
             }
 
         finally:
@@ -326,5 +339,5 @@ async def parse_template_with_screenshots(
             "text": "",
             "screenshots": [],
             "success": False,
-            "error": str(e)
+            "error": str(e),
         }

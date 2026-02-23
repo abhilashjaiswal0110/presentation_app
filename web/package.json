@@ -7,11 +7,12 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "if find . \\( -name '*.test.js' -o -name '*.test.ts' -o -name '*.test.tsx' \\) -not -path './node_modules/*' | grep -q .; then echo 'Test files detected but no test runner configured. Please update the npm test script.'; exit 1; else echo 'No test suite configured yet'; exit 0; fi"
   },
   "dependencies": {
     "@tailwindcss/postcss": "^4.1.18",
-    "next": "15.5.9",
+    "next": "15.5.12",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
@@ -20,7 +21,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "15.5.9",
+    "eslint-config-next": "15.5.12",
     "postcss": "^8",
     "tailwindcss": "^4",
     "typescript": "^5"

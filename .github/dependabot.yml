@@ -1,0 +1,91 @@
+version: 2
+
+updates:
+  # Python backend dependencies
+  - package-ecosystem: "pip"
+    directory: "/backend"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "python"
+    commit-message:
+      prefix: "chore(deps)"
+    reviewers:
+      - "abhilashjaiswal0110"
+    groups:
+      fastapi-stack:
+        patterns:
+          - "fastapi*"
+          - "uvicorn*"
+          - "pydantic*"
+          - "python-multipart*"
+      ai-stack:
+        patterns:
+          - "anthropic*"
+          - "claude-agent-sdk*"
+          - "llama-cloud-services*"
+          - "mcp*"
+
+  # Node.js frontend dependencies
+  - package-ecosystem: "npm"
+    directory: "/web"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "javascript"
+    commit-message:
+      prefix: "chore(deps)"
+    reviewers:
+      - "abhilashjaiswal0110"
+    groups:
+      next-stack:
+        patterns:
+          - "next*"
+          - "react*"
+          - "@types/react*"
+      dev-tools:
+        patterns:
+          - "eslint*"
+          - "typescript*"
+          - "tailwindcss*"
+          - "postcss*"
+
+  # Node.js pptx_converter dependencies
+  - package-ecosystem: "npm"
+    directory: "/backend/pptx_converter"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "javascript"
+    commit-message:
+      prefix: "chore(deps)"
+    reviewers:
+      - "abhilashjaiswal0110"
+
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "github-actions"
+    commit-message:
+      prefix: "chore(deps)"
+    reviewers:
+      - "abhilashjaiswal0110"

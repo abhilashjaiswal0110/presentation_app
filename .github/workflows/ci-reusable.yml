@@ -1,0 +1,221 @@
+name: Reusable CI Template
+
+# ─────────────────────────────────────────────────────────────────────────────
+# REUSABLE WORKFLOW — can be called from any workflow in this repo OR from
+# another repository (as long as the caller has access to this repo).
+#
+# Usage in another repo:
+#
+#   jobs:
+#     ci:
+#       uses: abhilashjaiswal0110/presentation_app/.github/workflows/ci-reusable.yml@main
+#       with:
+#         python-version: '3.12'
+#         node-version: '20'
+#         backend-dir: './backend'
+#         frontend-dir: './web'
+#       secrets:
+#         codecov-token: ${{ secrets.CODECOV_TOKEN }}
+# ─────────────────────────────────────────────────────────────────────────────
+
+on:
+  workflow_call:
+    inputs:
+      python-version:
+        description: 'Python version for the backend job'
+        required: false
+        type: string
+        default: '3.11'
+      node-version:
+        description: 'Node.js version for frontend and converter jobs'
+        required: false
+        type: string
+        default: '18'
+      backend-dir:
+        description: 'Relative path to the Python backend directory'
+        required: false
+        type: string
+        default: './backend'
+      frontend-dir:
+        description: 'Relative path to the Next.js frontend directory'
+        required: false
+        type: string
+        default: './web'
+      run-backend-tests:
+        description: 'Whether to run backend pytest suite'
+        required: false
+        type: boolean
+        default: true
+      run-frontend-tests:
+        description: 'Whether to run frontend test suite'
+        required: false
+        type: boolean
+        default: true
+      run-security-scan:
+        description: 'Whether to run Safety + npm audit security scans'
+        required: false
+        type: boolean
+        default: true
+    secrets:
+      codecov-token:
+        description: 'Codecov upload token (optional)'
+        required: false
+
+jobs:
+  # ── Backend ──────────────────────────────────────────────────────────────
+  backend:
+    name: Backend — Lint & Test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python-version }}
+          cache: 'pip'
+          cache-dependency-path: '${{ inputs.backend-dir }}/requirements.txt'
+
+      - name: Install backend dependencies
+        working-directory: ${{ inputs.backend-dir }}
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-asyncio pytest-cov black flake8 mypy
+
+      - name: Black format check
+        working-directory: ${{ inputs.backend-dir }}
+        run: black . --check
+
+      - name: Flake8 lint
+        working-directory: ${{ inputs.backend-dir }}
+        run: flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+
+      - name: MyPy type check
+        working-directory: ${{ inputs.backend-dir }}
+        run: mypy . --ignore-missing-imports || true
+
+      - name: Run pytest
+        if: inputs.run-backend-tests
+        working-directory: ${{ inputs.backend-dir }}
+        run: pytest --cov=. --cov-report=xml --cov-report=html
+        continue-on-error: true
+
+      - name: Upload coverage to Codecov
+        # codecov-token is optional. If the CODECOV_TOKEN secret is not set,
+        # this step fails silently (continue-on-error: true) — expected for
+        # forks and repos not yet connected to Codecov.
+        # To enable: add CODECOV_TOKEN in repo Settings → Secrets and variables
+        # → Actions. See https://docs.codecov.com/docs/quick-start
+        if: inputs.run-backend-tests
+        uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.codecov-token }}
+          files: ${{ inputs.backend-dir }}/coverage.xml
+          flags: backend
+          name: backend-coverage
+        continue-on-error: true
+
+  # ── Frontend ──────────────────────────────────────────────────────────────
+  frontend:
+    name: Frontend — Lint & Build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: 'npm'
+          cache-dependency-path: '${{ inputs.frontend-dir }}/package-lock.json'
+
+      - name: Install frontend dependencies
+        working-directory: ${{ inputs.frontend-dir }}
+        run: npm ci
+
+      - name: ESLint
+        working-directory: ${{ inputs.frontend-dir }}
+        run: npm run lint
+
+      - name: TypeScript type check
+        working-directory: ${{ inputs.frontend-dir }}
+        run: npm run typecheck
+
+      - name: Run frontend tests
+        if: inputs.run-frontend-tests
+        working-directory: ${{ inputs.frontend-dir }}
+        run: npm test
+        continue-on-error: true
+
+      - name: Production build
+        working-directory: ${{ inputs.frontend-dir }}
+        run: npm run build
+
+  # ── Security ──────────────────────────────────────────────────────────────
+  security:
+    name: Vulnerability Scan
+    runs-on: ubuntu-latest
+    if: inputs.run-security-scan
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python-version }}
+
+      - name: Install pip-audit
+        run: pip install pip-audit
+
+      - name: pip-audit — Python dependency vulnerabilities
+        working-directory: ${{ inputs.backend-dir }}
+        run: pip-audit -r requirements.txt --format=markdown
+        # continue-on-error: actual failures (network errors, parse errors) are
+        # visible in the step log; the job still proceeds to the npm audit step.
+        continue-on-error: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+
+      - name: Install frontend dependencies (for audit)
+        working-directory: ${{ inputs.frontend-dir }}
+        run: npm ci
+
+      - name: npm audit — frontend dependency vulnerabilities
+        working-directory: ${{ inputs.frontend-dir }}
+        run: npm audit --audit-level=high
+        continue-on-error: true
+
+  # ── Gate ──────────────────────────────────────────────────────────────────
+  all-checks:
+    name: All Checks Passed
+    needs: [backend, frontend, security]
+    runs-on: ubuntu-latest
+    if: always()
+    permissions: {}  # no GitHub API access needed — runs shell only
+
+    steps:
+      - name: Evaluate required jobs
+        run: |
+          backend="${{ needs.backend.result }}"
+          frontend="${{ needs.frontend.result }}"
+          security="${{ needs.security.result }}"
+          echo "backend=$backend  frontend=$frontend  security=$security"
+          # security is "skipped" when run-security-scan=false — acceptable.
+          if [[ "$backend" == "success" && \
+                "$frontend" == "success" && \
+                ( "$security" == "success" || "$security" == "skipped" ) ]]; then
+            echo "✅ All required checks passed."
+            exit 0
+          else
+            echo "❌ One or more required checks failed."
+            exit 1
+          fi

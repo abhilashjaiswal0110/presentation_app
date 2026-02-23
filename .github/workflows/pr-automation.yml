@@ -1,0 +1,161 @@
+name: PR Automation
+
+# Runs on every PR to apply labels, detect PR size, and request Copilot review.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  # ──────────────────────────────────────────────────────────────
+  # 1. Auto-label based on changed file paths (uses labeler.yml)
+  # ──────────────────────────────────────────────────────────────
+  label-pr:
+    name: Label PR
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Apply path-based labels
+        uses: actions/labeler@v5
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          configuration-path: .github/labeler.yml
+          sync-labels: true
+
+  # ──────────────────────────────────────────────────────────────
+  # 2. Detect PR size and label accordingly
+  # ──────────────────────────────────────────────────────────────
+  size-label:
+    name: PR Size Label
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
+
+    steps:
+      - name: Calculate PR size and apply label
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const pr = context.payload.pull_request;
+            const total = pr.additions + pr.deletions;
+
+            let sizeLabel;
+            if (total <= 10)        sizeLabel = 'size/XS';
+            else if (total <= 50)   sizeLabel = 'size/S';
+            else if (total <= 200)  sizeLabel = 'size/M';
+            else if (total <= 500)  sizeLabel = 'size/L';
+            else                    sizeLabel = 'size/XL';
+
+            const sizeLabels = ['size/XS', 'size/S', 'size/M', 'size/L', 'size/XL'];
+
+            // Size labels are created by setup-repo.yml; no per-PR creation needed.
+            // Remove any stale size label then apply the correct one.
+            const currentLabels = await github.rest.issues.listLabelsOnIssue({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: pr.number,
+            });
+            for (const label of currentLabels.data) {
+              if (sizeLabels.includes(label.name)) {
+                await github.rest.issues.removeLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: pr.number,
+                  name: label.name,
+                });
+              }
+            }
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: pr.number,
+              labels: [sizeLabel],
+            });
+            core.info(`Applied size label: ${sizeLabel} (${total} lines changed)`);
+
+  # ──────────────────────────────────────────────────────────────
+  # 3. Request GitHub Copilot code review
+  #    Requires GitHub Copilot Enterprise / Copilot Business with
+  #    code review enabled on the repository.
+  #    Falls back gracefully if not available.
+  # ──────────────────────────────────────────────────────────────
+  request-copilot-review:
+    name: Request Copilot Review
+    runs-on: ubuntu-latest
+    if: |
+      github.event.action == 'opened' &&
+      github.event.pull_request.draft == false
+
+    steps:
+      - name: Request Copilot as reviewer
+        uses: actions/github-script@v7
+        continue-on-error: true   # non-fatal: Copilot review is best-effort
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            // 'copilot' is the GitHub login for the Copilot code review bot.
+            // Requires GitHub Copilot Enterprise or Copilot Business with
+            // the "Copilot code review" feature enabled on this repository.
+            // See: https://docs.github.com/en/copilot/using-github-copilot/code-review/using-copilot-code-review
+            try {
+              await github.rest.pulls.requestReviewers({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: context.payload.pull_request.number,
+                reviewers: ['copilot'],
+              });
+              core.info('Copilot review requested successfully.');
+            } catch (e) {
+              core.warning(`Could not request Copilot review: ${e.message}`);
+              core.warning('Ensure GitHub Copilot code review is enabled for this repository.');
+            }
+
+  # ──────────────────────────────────────────────────────────────
+  # 4. Post PR summary comment with quality checklist
+  # ──────────────────────────────────────────────────────────────
+  pr-welcome-comment:
+    name: Post PR Summary
+    runs-on: ubuntu-latest
+    if: github.event.action == 'opened'
+
+    steps:
+      - name: Post welcome and checklist comment
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const lines = [
+              '## 🤖 Automated PR Checks',
+              '',
+              'All the following checks run automatically on this PR. The PR will be eligible',
+              'for auto-merge once **every required check passes**.',
+              '',
+              '| Check | Status |',
+              '|-------|--------|',
+              '| 🔍 Backend Lint & Test | Runs on push |',
+              '| 🎨 Frontend Lint & Build | Runs on push |',
+              '| 🛡️ CodeQL Security Scan | Runs on push |',
+              '| 📦 Dependency Review | Runs on PR |',
+              '| 🔒 Vulnerability Scan | Runs on push |',
+              '| ✅ All Checks Gate | Required before merge |',
+              '',
+              '**Copilot code review** has been requested. Address any feedback before merging.',
+              '',
+              '> 💡 Add the `auto-merge` label to enable automatic squash-merge once all checks pass.',
+            ];
+            const body = lines.join('\n');
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number,
+              body,
+            });

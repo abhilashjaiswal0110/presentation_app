@@ -7,6 +7,7 @@ and file system storage for presentation data.
 
 import json
 import os
+import re
 import sqlite3
 import threading
 import uuid
@@ -26,6 +27,10 @@ SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
 
 # SQLite database path
 DB_PATH = DATA_DIR / "sessions.db"
+
+# Only allow UUID-like session IDs (alphanumeric + hyphens, bounded length).
+# This prevents path-traversal attacks when session_id is used in file paths.
+_SESSION_ID_RE = re.compile(r"^[0-9a-zA-Z_-]{1,64}$")
 
 
 class PresentationSession:
@@ -70,7 +75,7 @@ class PresentationSession:
             "is_continuation": self.is_continuation,
             "claude_session_id": self.claude_session_id,
             "created_at": self.created_at.isoformat(),
-            "updated_at": self.updated_at.isoformat()
+            "updated_at": self.updated_at.isoformat(),
         }
 
     @classmethod
@@ -114,8 +119,7 @@ class SessionManager:
             conn.commit()
 
     def get_or_create_session(
-        self,
-        session_id: Optional[str] = None
+        self, session_id: Optional[str] = None
     ) -> PresentationSession:
         """Get existing session or create new one."""
         with self._lock:
@@ -154,42 +158,74 @@ class SessionManager:
                 self._sessions[session_id] = session
             return session
 
+    def _resolve_safe_path(self, session_id: str) -> Optional[Path]:
+        """Return the session directory resolved strictly inside SESSIONS_DIR.
+
+        Uses resolve() + relative_to() so that any path-traversal attempt
+        (e.g. session_id containing '..' or symlinks escaping the root) is
+        rejected before the path is ever passed to open().
+        """
+        candidate = (SESSIONS_DIR / session_id).resolve()
+        try:
+            candidate.relative_to(SESSIONS_DIR.resolve())
+            return candidate
+        except ValueError:
+            return None
+
     def _save_to_disk(self, session: PresentationSession):
         """Save session data to JSON file."""
-        session_dir = SESSIONS_DIR / session.session_id
+        if not _SESSION_ID_RE.match(session.session_id):
+            raise ValueError(f"Invalid session ID: {session.session_id!r}")
+        session_dir = self._resolve_safe_path(session.session_id)
+        if session_dir is None:
+            raise ValueError(
+                f"Session ID resolves outside data directory: {session.session_id!r}"
+            )
         session_dir.mkdir(exist_ok=True)
 
+        # session_dir verified by _resolve_safe_path() — safe to write
         data_path = session_dir / "session.json"
-        with open(data_path, 'w') as f:
+        with open(data_path, "w", encoding="utf-8") as f:
             json.dump(session.to_dict(), f, indent=2)
 
     def _load_from_disk(self, session_id: str) -> Optional[PresentationSession]:
         """Load session data from JSON file."""
-        data_path = SESSIONS_DIR / session_id / "session.json"
+        if not _SESSION_ID_RE.match(session_id):
+            logger.warning("Rejected invalid session ID: %r", session_id)
+            return None
+        session_dir = self._resolve_safe_path(session_id)
+        if session_dir is None:
+            logger.warning("Session ID resolves outside data directory: %r", session_id)
+            return None
+        data_path = session_dir / "session.json"
         if not data_path.exists():
             return None
 
         try:
-            with open(data_path, 'r') as f:
+            # session_dir verified by _resolve_safe_path() — safe to read
+            with open(data_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
             return PresentationSession.from_dict(data)
         except Exception as e:
-            logger.error(f"Error loading session {session_id}: {e}")
+            logger.error("Error loading session %r: %s", session_id, e)
             return None
 
     def _save_to_db(self, session: PresentationSession):
         """Save session metadata to SQLite."""
         with sqlite3.connect(DB_PATH) as conn:
-            conn.execute("""
+            conn.execute(
+                """
                 INSERT OR REPLACE INTO sessions
                 (session_id, created_at, updated_at, claude_session_id)
                 VALUES (?, ?, ?, ?)
-            """, (
-                session.session_id,
-                session.created_at.isoformat(),
-                session.updated_at.isoformat(),
-                session.claude_session_id
-            ))
+            """,
+                (
+                    session.session_id,
+                    session.created_at.isoformat(),
+                    session.updated_at.isoformat(),
+                    session.claude_session_id,
+                ),
+            )
             conn.commit()
 
     def cleanup_old_sessions(self, cutoff: datetime) -> int:
@@ -199,7 +235,7 @@ class SessionManager:
             with sqlite3.connect(DB_PATH) as conn:
                 cursor = conn.execute(
                     "SELECT session_id FROM sessions WHERE updated_at < ?",
-                    (cutoff.isoformat(),)
+                    (cutoff.isoformat(),),
                 )
                 old_sessions = [row[0] for row in cursor.fetchall()]
 
@@ -211,13 +247,13 @@ class SessionManager:
                 session_dir = SESSIONS_DIR / session_id
                 if session_dir.exists():
                     import shutil
+
                     shutil.rmtree(session_dir)
 
                 # Remove from database
                 with sqlite3.connect(DB_PATH) as conn:
                     conn.execute(
-                        "DELETE FROM sessions WHERE session_id = ?",
-                        (session_id,)
+                        "DELETE FROM sessions WHERE session_id = ?", (session_id,)
                     )
                     conn.commit()
 
