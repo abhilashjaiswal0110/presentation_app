@@ -65,7 +65,6 @@ jobs:
     if: github.event_name == 'workflow_dispatch'
     # Elevated permissions only on the job that needs them.
     permissions:
-      administration: write
       contents: write
 
     steps:
